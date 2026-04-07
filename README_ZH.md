@@ -148,10 +148,23 @@ HermitFlow 已接入 Claude Code。应用启动时会执行以下初始化动作
 ./scripts/package.sh
 ```
 
-默认生成 `Release` 版本，输出到：
+默认会按当前机器架构生成 `Release` 版本，输出文件名格式为 `HermitFlow-<arch>.app` 和 `HermitFlow-<arch>.pkg`。
 
-- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow.app`
-- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow.pkg`
+例如在 Apple Silicon 机器上会输出：
+
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-arm64.app`
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-arm64.pkg`
+
+如果要在 Apple Silicon 机器上打 Intel (`x86_64`) 安装包：
+
+```bash
+./scripts/package.sh Release intel
+```
+
+会输出：
+
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-intel.app`
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-intel.pkg`
 
 如需打 `Debug` 包：
 

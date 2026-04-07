@@ -148,10 +148,23 @@ The repository includes a local packaging script:
 ./scripts/package.sh
 ```
 
-By default it builds a `Release` package and outputs:
+By default it builds a `Release` package for the current machine architecture and outputs `HermitFlow-<arch>.app` and `HermitFlow-<arch>.pkg`.
 
-- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow.app`
-- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow.pkg`
+For example, on Apple Silicon it outputs:
+
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-arm64.app`
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-arm64.pkg`
+
+To build an Intel (`x86_64`) installer from Apple Silicon:
+
+```bash
+./scripts/package.sh Release intel
+```
+
+This outputs:
+
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-intel.app`
+- `/Users/fuyue/Documents/HermitFlow/dist/HermitFlow-intel.pkg`
 
 To build a `Debug` package:
 
