@@ -29,6 +29,8 @@
 			A1000000000000000000002D /* openai.png in Resources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000002E /* openai.png */; };
 			A10000000000000000000041 /* hermit.png in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000042 /* hermit.png */; };
 			A10000000000000000000043 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000044 /* Assets.xcassets */; };
+			A10000000000000000000045 /* NotificationSoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000046 /* NotificationSoundPlayer.swift */; };
+			A10000000000000000000047 /* notification-ping.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000048 /* notification-ping.mp3 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -56,6 +58,8 @@
 			A1000000000000000000002E /* openai.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = openai.png; sourceTree = "<group>"; };
 			A10000000000000000000042 /* hermit.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = hermit.png; sourceTree = "<group>"; };
 			A10000000000000000000044 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+			A10000000000000000000046 /* NotificationSoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSoundPlayer.swift; sourceTree = "<group>"; };
+			A10000000000000000000048 /* notification-ping.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "notification-ping.mp3"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -132,6 +136,7 @@
 			A10000000000000000000036 /* Resources */ = {
 				isa = PBXGroup;
 				children = (
+					A10000000000000000000048 /* notification-ping.mp3 */,
 					A10000000000000000000042 /* hermit.png */,
 					A1000000000000000000002E /* openai.png */,
 					A1000000000000000000002C /* codex.png */,
@@ -158,6 +163,7 @@
 			children = (
 				A10000000000000000000026 /* AccessibilityPermissionMonitor.swift */,
 				A10000000000000000000024 /* FocusLauncher.swift */,
+				A10000000000000000000046 /* NotificationSoundPlayer.swift */,
 				A1000000000000000000000F /* FocusRouter.swift */,
 			);
 			path = Services;
@@ -222,6 +228,7 @@
 				buildActionMask = 2147483647;
 					files = (
 						A10000000000000000000043 /* Assets.xcassets in Resources */,
+						A10000000000000000000047 /* notification-ping.mp3 in Resources */,
 						A10000000000000000000041 /* hermit.png in Resources */,
 					A1000000000000000000002D /* openai.png in Resources */,
 					A1000000000000000000002B /* codex.png in Resources */,
@@ -253,6 +260,7 @@
 				A1000000000000000000001F /* LocalCodexSource.swift in Sources */,
 				A10000000000000000000023 /* FocusLauncher.swift in Sources */,
 				A10000000000000000000025 /* AccessibilityPermissionMonitor.swift in Sources */,
+				A10000000000000000000045 /* NotificationSoundPlayer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

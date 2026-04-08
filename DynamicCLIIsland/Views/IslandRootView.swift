@@ -84,62 +84,139 @@ struct IslandRootView: View {
 
 
     private func inlineApprovalBody(_ request: ApprovalRequest) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             islandHeader
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "exclamationmark.shield.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.23, green: 0.51, blue: 0.95))
+
                     Text("Approval Needed")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
 
-                    pendingApprovalBadge
-
                     Spacer(minLength: 8)
 
                     Button(action: store.collapseInlineApproval) {
-                        Text("收起")
+                        Text("Hide")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.white.opacity(0.7))
                     }
                     .buttonStyle(.plain)
                 }
+                .padding(.bottom, 8)
 
-                Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.white.opacity(0.9))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 1)
+                    .padding(.bottom, 12)
 
-                if let rationale = request.rationale, !rationale.isEmpty {
-                    Text(rationale)
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundStyle(Color.white.opacity(0.56))
-                        .lineLimit(2)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color(red: 0.63, green: 0.63, blue: 0.67))
+
+                        Text("Session:")
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
+
+                        Text(approvalSessionTitle(for: request))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 8)
+
+                        approvalSourcePill(for: request.source)
+                    }
+
+                    Text(approvalPrimaryTitle(for: request))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Command")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
+
+                        Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.black.opacity(0.4))
+                    )
+
+                    Text(relativeTimestamp(for: request.createdAt))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.05))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+                .padding(.bottom, 12)
+
+                HStack(spacing: 8) {
+                    approvalDecisionButton(
+                        title: "Deny",
+                        systemImage: "xmark",
+                        titleColor: Color(red: 1.0, green: 0.42, blue: 0.42),
+                        background: Color.white.opacity(0.08),
+                        border: Color.white.opacity(0.08),
+                        borderWidth: 1
+                    ) {
+                        store.rejectApproval()
+                    }
+
+                    approvalDecisionButton(
+                        title: "Allow Once",
+                        systemImage: "checkmark",
+                        titleColor: .white,
+                        background: Color(red: 0.13, green: 0.77, blue: 0.37)
+                    ) {
+                        store.acceptApproval()
+                    }
+
+                    approvalDecisionButton(
+                        title: "Always Allow",
+                        systemImage: "checkmark.circle",
+                        titleColor: Color(red: 0.63, green: 0.63, blue: 0.67),
+                        iconColor: Color(red: 0.13, green: 0.77, blue: 0.37),
+                        background: Color.white.opacity(0.06),
+                        border: Color.white.opacity(0.09),
+                        borderWidth: 1
+                    ) {
+                        store.acceptAllApprovals()
+                    }
                 }
 
                 if let approvalDiagnosticMessage = store.approvalDiagnosticMessage {
                     approvalDiagnosticCallout(approvalDiagnosticMessage, compact: true)
-                }
-
-                HStack(spacing: 10) {
-                    approvalActionButton(title: "Reject", fill: Color(red: 0.84, green: 0.24, blue: 0.22)) {
-                        store.rejectApproval()
-                    }
-
-                    approvalActionButton(title: "Accept", fill: Color(red: 0.17, green: 0.70, blue: 0.33)) {
-                        store.acceptApproval()
-                    }
-                }
-
-                approvalActionButton(title: "Accept All", fill: Color.white.opacity(0.14), isFullWidth: true) {
-                    store.acceptAllApprovals()
+                        .padding(.top, 10)
                 }
             }
             .padding(.horizontal, 36)
+            .padding(.top, 12)
         }
-        .padding(.top, 12)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -271,11 +348,27 @@ private extension IslandRootView {
 
                 Spacer(minLength: 0)
 
-                compactStatusIcon
-                    .frame(width: 18, height: 18)
+                HStack(spacing: 10) {
+                    soundToggleButton
+
+                    compactStatusIcon
+                        .frame(width: 18, height: 18)
+                }
             }
         }
         .frame(height: 38)
+    }
+
+    var soundToggleButton: some View {
+        Button(action: store.toggleSoundMuted) {
+            Image(systemName: store.isSoundMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(store.isSoundMuted ? Color.white.opacity(0.42) : Color.white.opacity(0.74))
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(store.isSoundMuted ? "Unmute notifications" : "Mute notifications")
     }
 
     var usageSection: some View {
@@ -558,6 +651,41 @@ private extension IslandRootView {
         .frame(maxWidth: isFullWidth ? .infinity : nil)
     }
 
+    func approvalDecisionButton(
+        title: String,
+        systemImage: String,
+        titleColor: Color,
+        iconColor: Color? = nil,
+        background: Color,
+        border: Color = .clear,
+        borderWidth: CGFloat = 0,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(iconColor ?? titleColor)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(titleColor)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(border, lineWidth: borderWidth)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     func approvalDiagnosticCallout(_ message: String, compact: Bool) -> some View {
         Text(message)
             .font(.system(size: compact ? 10 : 11, weight: .medium))
@@ -777,6 +905,62 @@ private extension IslandRootView {
         let count = store.sessions.count
         let suffix = count == 1 ? "active" : "active"
         return "\(count) \(suffix)"
+    }
+
+    func approvalPrimaryTitle(for request: ApprovalRequest) -> String {
+        if let rationale = request.rationale?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rationale.isEmpty {
+            return rationale
+        }
+
+        if request.commandSummary.isEmpty {
+            return approvalConversationTitle(for: request) ?? "Waiting for command detail"
+        }
+
+        return request.commandSummary
+    }
+
+    func approvalConversationTitle(for request: ApprovalRequest) -> String? {
+        if let sessionID = request.focusTarget?.sessionID {
+            if let matchedSession = store.sessions.first(where: {
+                $0.id == sessionID || $0.focusTarget?.sessionID == sessionID
+            }) {
+                return matchedSession.title
+            }
+        }
+
+        if let displayName = request.focusTarget?.displayName,
+           let matchedSession = store.sessions.first(where: {
+               $0.focusTarget?.displayName == displayName
+           }) {
+            return matchedSession.title
+        }
+
+        if let matchedSession = store.sessions.first(where: { $0.origin == request.source }) {
+            return matchedSession.title
+        }
+
+        return nil
+    }
+
+    func approvalSessionTitle(for request: ApprovalRequest) -> String {
+        if let displayName = request.focusTarget?.displayName, !displayName.isEmpty {
+            return displayName
+        }
+
+        return request.source.provider.displayName
+    }
+
+    func approvalSourcePill(for origin: SessionOrigin) -> some View {
+        Text(origin.provider.displayName)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(origin.provider.tint)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(origin.provider.tint.opacity(0.14))
+            )
     }
 
     func relativeTimestamp(for date: Date) -> String {

@@ -35,9 +35,10 @@ final class ProgressStore: ObservableObject {
     @Published private(set) var accessibilityPermissionGranted = false
     @Published private(set) var accessibilityPromptDismissed: Bool
     @Published private(set) var runningGlyphAnimationSuppressed = false
+    @Published private(set) var isSoundMuted: Bool
 
     private let compactHeightOverscan: CGFloat = 8
-    private let inlineApprovalMinimumHeight: CGFloat = 240
+    private let inlineApprovalMinimumHeight: CGFloat = 300
     private let localCodexPollInterval: TimeInterval = 1.0
     private let localApprovalPollInterval: TimeInterval = 0.25
     private let panelHoverActivationDelay: TimeInterval = 0.2
@@ -60,11 +61,13 @@ final class ProgressStore: ObservableObject {
     private var localApprovalRefreshInFlight = false
     private var lastFileModificationDate: Date?
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
+    private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
     private let accessibilityPromptDismissedDefaultsKey = "HermitFlow.accessibilityPromptDismissed"
     private let sessionStore = SessionStore()
     private let approvalStore = ApprovalStore()
     private let focusRouter = FocusRouter()
     private let focusLauncher = FocusLauncher()
+    private let notificationSoundPlayer = NotificationSoundPlayer()
     private let accessibilityPermissionMonitor = AccessibilityPermissionMonitor()
     private let localCodexSource = LocalCodexSource()
     private let localClaudeSource = LocalClaudeSource()
@@ -82,6 +85,7 @@ final class ProgressStore: ObservableObject {
     init() {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
+        isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
         accessibilityPromptDismissed = UserDefaults.standard.bool(forKey: accessibilityPromptDismissedDefaultsKey)
     }
 
@@ -330,6 +334,11 @@ final class ProgressStore: ObservableObject {
         UserDefaults.standard.set(logo.rawValue, forKey: logoDefaultsKey)
     }
 
+    func toggleSoundMuted() {
+        isSoundMuted.toggle()
+        UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
+    }
+
     func bringForward(_ target: FocusTarget?) {
         guard let target else {
             errorMessage = "No focus target available"
@@ -403,6 +412,7 @@ final class ProgressStore: ObservableObject {
         }
 
         collapsedInlineApprovalID = approvalRequest.id
+        suppressRunningGlyphAnimation(for: 0.45)
         onWindowSizeChange?(windowSize)
     }
 
@@ -825,6 +835,8 @@ final class ProgressStore: ObservableObject {
 
     private func resolvePresentationState() {
         let previousWindowSize = windowSize
+        let previousCodexStatus = codexStatus
+        let previousApprovalRequestID = approvalRequest?.id
         let runtimeState = lastRuntimeState ?? IslandRuntimeState(
             sessions: [],
             tasks: [],
@@ -853,7 +865,9 @@ final class ProgressStore: ObservableObject {
         let liveApprovalRequest = approvalStore.currentRequest
         let previewApprovalRequest = approvalPreviewEnabled ? makePreviewApprovalRequest() : nil
         let resolvedApprovalRequest = previewApprovalRequest ?? liveApprovalRequest
-        let resolvedCodexStatus: CodexActivityState = resolvedApprovalRequest != nil ? .running : runtimeState.codexStatus
+        let shouldForceRunningStatus = resolvedApprovalRequest != nil
+            && collapsedInlineApprovalID != resolvedApprovalRequest?.id
+        let resolvedCodexStatus: CodexActivityState = shouldForceRunningStatus ? .running : runtimeState.codexStatus
         let resolvedFocusTarget = resolvedApprovalRequest?.focusTarget
             ?? focusRouter.preferredTarget(from: runtimeState.sessions, approvalRequest: liveApprovalRequest)
 
@@ -876,6 +890,15 @@ final class ProgressStore: ObservableObject {
         errorMessage = runtimeState.errorMessage?.isEmpty == true ? nil : runtimeState.errorMessage
         approvalRequest = resolvedApprovalRequest
         focusTarget = resolvedFocusTarget
+
+        let shouldPlayApprovalSound = !approvalPreviewEnabled
+            && resolvedApprovalRequest?.id != nil
+            && resolvedApprovalRequest?.id != previousApprovalRequestID
+        let shouldPlaySuccessSound = previousCodexStatus != .success && resolvedCodexStatus == .success
+
+        if !isSoundMuted && (shouldPlayApprovalSound || shouldPlaySuccessSound) {
+            notificationSoundPlayer.playNotificationPing()
+        }
 
         if previousWindowSize != windowSize {
             onWindowSizeChange?(windowSize)
