@@ -1,9 +1,6 @@
 .DS_Store
-.DerivedData/
 DerivedData/
-.DerivedDataLocal/
-.DerivedDataPackage/
-.DerivedDataRelease/
+.DerivedData*/
 .swift-module-cache/
 dist/
 build/

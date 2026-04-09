@@ -37,7 +37,7 @@ final class ProgressStore: ObservableObject {
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
 
-    private let compactHeightOverscan: CGFloat = 8
+    private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
     private let localCodexPollInterval: TimeInterval = 1.0
     private let localApprovalPollInterval: TimeInterval = 0.25
@@ -46,6 +46,7 @@ final class ProgressStore: ObservableObject {
     private let accessibilityPermissionPollInterval: TimeInterval = 1.0
     private let externalDisplayCompactWidthMultiplier: CGFloat = 1.6
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
+    private let debugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
 
     var onWindowSizeChange: ((CGSize) -> Void)?
 
@@ -267,6 +268,10 @@ final class ProgressStore: ObservableObject {
             return
         }
 
+        guard approvalRequest == nil else {
+            return
+        }
+
         setDisplayMode(.island)
     }
 
@@ -311,6 +316,11 @@ final class ProgressStore: ObservableObject {
         guard displayMode != mode else {
             return
         }
+
+        debugLog(
+            "setDisplayMode \(displayMode.rawValue) -> \(mode.rawValue) " +
+            "approval=\(approvalRequest?.id ?? "nil") source=\(approvalRequest?.source.rawValue ?? "nil")"
+        )
 
         panelCollapseTask?.cancel()
         panelCollapseTask = nil
@@ -425,8 +435,6 @@ final class ProgressStore: ObservableObject {
     }
 
     private func performApproval(_ decision: ApprovalDecision, request: ApprovalRequest) {
-        collapseApprovalPresentation(for: request)
-
         if request.resolutionKind == .localHTTPHook {
             errorMessage = nil
 
@@ -465,6 +473,8 @@ final class ProgressStore: ObservableObject {
         if result == .success {
             approvalDiagnosticMessage = nil
             statusMessage = "\(decision.progressMessage) in \(target.displayName)：自动审批成功"
+            approvalStore.markResolved(id: request.id)
+            resolvePresentationState()
             return
         }
 
@@ -480,24 +490,6 @@ final class ProgressStore: ObservableObject {
             errorMessage = "Unable to locate \(target.displayName)"
             return
         }
-    }
-
-    private func collapseApprovalPresentation(for request: ApprovalRequest) {
-        collapsedInlineApprovalID = request.id
-        approvalDiagnosticMessage = nil
-        suppressRunningGlyphAnimation(for: 0.45)
-
-        if displayMode == .panel {
-            setDisplayMode(.island)
-            return
-        }
-
-        if displayMode == .island {
-            onWindowSizeChange?(windowSize)
-            return
-        }
-
-        setDisplayMode(.island)
     }
 
     private func suppressRunningGlyphAnimation(for duration: TimeInterval) {
@@ -802,8 +794,9 @@ final class ProgressStore: ObservableObject {
         let source = localCodexSource
         let claudeSource = localClaudeSource
         localApprovalQueue.async { [weak self] in
+            let codexApprovalProbe = source.fetchApprovalProbeResult()
             let approvalRequest = Self.mergeApprovalRequests(
-                source.fetchLatestApprovalRequest(),
+                codexApprovalProbe.pendingRequest,
                 claudeSource.fetchLatestApprovalRequest()
             )
 
@@ -817,6 +810,7 @@ final class ProgressStore: ObservableObject {
                     return
                 }
 
+                self.approvalStore.markResolved(ids: codexApprovalProbe.resolvedRequestIDs)
                 self.approvalStore.update(with: approvalRequest)
                 self.resolvePresentationState()
             }
@@ -836,7 +830,8 @@ final class ProgressStore: ObservableObject {
     private func resolvePresentationState() {
         let previousWindowSize = windowSize
         let previousCodexStatus = codexStatus
-        let previousApprovalRequestID = approvalRequest?.id
+        let previousApprovalRequest = approvalRequest
+        let previousApprovalRequestID = previousApprovalRequest?.id
         let runtimeState = lastRuntimeState ?? IslandRuntimeState(
             sessions: [],
             tasks: [],
@@ -846,30 +841,34 @@ final class ProgressStore: ObservableObject {
             errorMessage: nil,
             approvalRequest: nil
         )
-        let previousApprovalRequest = approvalStore.currentRequest
-
         switch sourceMode {
         case .localCodex:
             // Keep the higher-frequency approval probe alive when the heavier
             // activity snapshot has not yet caught up to a short-lived prompt.
             if let approvalRequest = runtimeState.approvalRequest {
                 approvalStore.update(with: approvalRequest)
-            } else if let previousApprovalRequest,
-                      runtimeState.lastUpdatedAt >= previousApprovalRequest.createdAt,
-                      runtimeState.codexStatus != .running {
-                approvalStore.clear()
             }
         case .demo, .file:
             approvalStore.update(with: runtimeState.approvalRequest)
         }
         let liveApprovalRequest = approvalStore.currentRequest
         let previewApprovalRequest = approvalPreviewEnabled ? makePreviewApprovalRequest() : nil
-        let resolvedApprovalRequest = previewApprovalRequest ?? liveApprovalRequest
+        let resolvedApprovalRequest = previewApprovalRequest
+            ?? liveApprovalRequest
+            ?? preservedCodexApprovalRequest(from: previousApprovalRequest)
         let shouldForceRunningStatus = resolvedApprovalRequest != nil
             && collapsedInlineApprovalID != resolvedApprovalRequest?.id
         let resolvedCodexStatus: CodexActivityState = shouldForceRunningStatus ? .running : runtimeState.codexStatus
         let resolvedFocusTarget = resolvedApprovalRequest?.focusTarget
             ?? focusRouter.preferredTarget(from: runtimeState.sessions, approvalRequest: liveApprovalRequest)
+
+        if previousApprovalRequestID != resolvedApprovalRequest?.id {
+            debugLog(
+                "approvalRequest \(previousApprovalRequestID ?? "nil") -> \(resolvedApprovalRequest?.id ?? "nil") " +
+                "live=\(liveApprovalRequest?.id ?? "nil") preview=\(previewApprovalRequest?.id ?? "nil") " +
+                "display=\(displayMode.rawValue) status=\(runtimeState.codexStatus.rawValue)"
+            )
+        }
 
         if let resolvedApprovalRequest {
             if collapsedInlineApprovalID != resolvedApprovalRequest.id,
@@ -878,9 +877,6 @@ final class ProgressStore: ObservableObject {
                 approvalDiagnosticMessage = nil
             }
         } else {
-            if displayMode == .panel, previousApprovalRequestID != nil {
-                setDisplayMode(.island)
-            }
             collapsedInlineApprovalID = nil
             approvalDiagnosticMessage = nil
         }
@@ -905,6 +901,35 @@ final class ProgressStore: ObservableObject {
 
         if previousWindowSize != windowSize {
             onWindowSizeChange?(windowSize)
+        }
+    }
+
+    private func preservedCodexApprovalRequest(from previousApprovalRequest: ApprovalRequest?) -> ApprovalRequest? {
+        guard
+            let previousApprovalRequest,
+            previousApprovalRequest.source == .codex,
+            !approvalStore.isResolved(id: previousApprovalRequest.id)
+        else {
+            return nil
+        }
+
+        debugLog("preserving previous codex approval \(previousApprovalRequest.id)")
+
+        return previousApprovalRequest
+    }
+
+    private func debugLog(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] [ProgressStore] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: debugLogURL.path),
+               let handle = try? FileHandle(forWritingTo: debugLogURL) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            } else {
+                try? data.write(to: debugLogURL, options: .atomic)
+            }
         }
     }
 

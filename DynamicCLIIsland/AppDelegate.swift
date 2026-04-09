@@ -1,5 +1,7 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
+import Foundation
 import SwiftUI
 
 @MainActor
@@ -30,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var approvalPreviewMenuItem: NSMenuItem?
     private let screenPlacementModeDefaultsKey = "HermitFlow.screenPlacementMode"
     private let fixedScreenIDDefaultsKey = "HermitFlow.fixedScreenID"
+    private let debugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -339,23 +342,139 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return fixedScreen
         }
 
-        if preferMouseScreen {
-            let mouseLocation = NSEvent.mouseLocation
-            if let hoveredScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
-                return hoveredScreen
-            }
+        if let automaticScreen = automaticPlacementScreen(preferMouseScreen: preferMouseScreen) {
+            return automaticScreen
         }
 
         if let screen = window.screen {
             return screen
         }
 
-        let mouseLocation = NSEvent.mouseLocation
-        if let hoveredScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
+        return NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private func automaticPlacementScreen(preferMouseScreen: Bool) -> NSScreen? {
+        if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+           let focusedScreen = focusedScreen(for: frontmostApplication) {
+            return focusedScreen
+        }
+
+        if preferMouseScreen, let hoveredScreen = screenContainingMouse() {
+            return hoveredScreen
+        }
+
+        if let hoveredScreen = screenContainingMouse() {
             return hoveredScreen
         }
 
         return NSScreen.main ?? NSScreen.screens.first
+    }
+
+    private func screenContainingMouse() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) })
+    }
+
+    private func focusedScreen(for application: NSRunningApplication) -> NSScreen? {
+        guard application.processIdentifier > 0 else {
+            return nil
+        }
+
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        let windowAttributes: [CFString] = [
+            kAXFocusedWindowAttribute as CFString,
+            kAXMainWindowAttribute as CFString
+        ]
+
+        for attribute in windowAttributes {
+            guard let windowElement = accessibilityElementAttribute(attribute, on: appElement) else {
+                continue
+            }
+
+            if let frame = accessibilityFrame(for: windowElement),
+               let screen = screen(matching: frame) {
+                return screen
+            }
+        }
+
+        return nil
+    }
+
+    private func accessibilityElementAttribute(_ attribute: CFString, on element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+        guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
+        return unsafeDowncast(value, to: AXUIElement.self)
+    }
+
+    private func accessibilityFrame(for element: AXUIElement) -> CGRect? {
+        guard
+            let positionValue = accessibilityValueAttribute(kAXPositionAttribute as CFString, on: element, type: .cgPoint),
+            let sizeValue = accessibilityValueAttribute(kAXSizeAttribute as CFString, on: element, type: .cgSize)
+        else {
+            return nil
+        }
+
+        let origin = CGPoint(x: positionValue.point.x, y: positionValue.point.y)
+        let size = CGSize(width: sizeValue.size.width, height: sizeValue.size.height)
+        guard size.width > 0, size.height > 0 else {
+            return nil
+        }
+
+        return CGRect(origin: origin, size: size)
+    }
+
+    private func accessibilityValueAttribute(
+        _ attribute: CFString,
+        on element: AXUIElement,
+        type: AXValueType
+    ) -> AccessibilityValue? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+        guard result == .success, let value, CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+
+        let axValue = unsafeDowncast(value, to: AXValue.self)
+        switch type {
+        case .cgPoint:
+            var point = CGPoint.zero
+            guard AXValueGetType(axValue) == .cgPoint, AXValueGetValue(axValue, .cgPoint, &point) else {
+                return nil
+            }
+            return .point(point)
+        case .cgSize:
+            var size = CGSize.zero
+            guard AXValueGetType(axValue) == .cgSize, AXValueGetValue(axValue, .cgSize, &size) else {
+                return nil
+            }
+            return .size(size)
+        default:
+            return nil
+        }
+    }
+
+    private func screen(matching frame: CGRect) -> NSScreen? {
+        let normalizedFrame = frame.standardized
+        guard !normalizedFrame.isNull, !normalizedFrame.isEmpty else {
+            return nil
+        }
+
+        let bestScreen = NSScreen.screens.max { lhs, rhs in
+            let leftIntersection = lhs.frame.intersection(normalizedFrame)
+            let rightIntersection = rhs.frame.intersection(normalizedFrame)
+            return (leftIntersection.width * leftIntersection.height) < (rightIntersection.width * rightIntersection.height)
+        }
+
+        if let bestScreen, bestScreen.frame.intersects(normalizedFrame) {
+            return bestScreen
+        }
+
+        let frameCenter = CGPoint(x: normalizedFrame.midX, y: normalizedFrame.midY)
+        return NSScreen.screens.first(where: { $0.frame.contains(frameCenter) })
     }
 
     private func registerScreenObservers() {
@@ -389,6 +508,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSWorkspace.activeSpaceDidChangeNotification,
             object: nil
         )
+
+        workspaceCenter.addObserver(
+            self,
+            selector: #selector(handleDidActivateApplication(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
     }
 
     private func registerOutsideClickMonitors() {
@@ -409,12 +535,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        guard store.approvalRequest == nil else {
+            debugLog("collapsePanelIfNeeded ignored because approval is active")
+            return
+        }
+
         let clickLocation = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? NSEvent.mouseLocation
         guard !window.frame.contains(clickLocation) else {
             return
         }
 
+        debugLog("collapsePanelIfNeeded collapsing panel from outside click")
         store.collapsePanel()
+    }
+
+    private func debugLog(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] [AppDelegate] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: debugLogURL.path),
+               let handle = try? FileHandle(forWritingTo: debugLogURL) {
+                defer { try? handle.close() }
+                _ = try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+            } else {
+                try? data.write(to: debugLogURL, options: .atomic)
+            }
+        }
     }
 
     private func updateMenuState() {
@@ -690,9 +837,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store.handleAppDidBecomeActive()
     }
 
+    @objc
+    private func handleDidActivateApplication(_ notification: Notification) {
+        guard screenPlacementMode == .automatic, let window else {
+            return
+        }
+
+        position(window: window, size: store.windowSize, animated: false)
+        window.orderFrontRegardless()
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         rebuildScreenMenu()
         updateMenuState()
+    }
+}
+
+private enum AccessibilityValue {
+    case point(CGPoint)
+    case size(CGSize)
+
+    var point: CGPoint {
+        guard case let .point(value) = self else {
+            return .zero
+        }
+
+        return value
+    }
+
+    var size: CGSize {
+        guard case let .size(value) = self else {
+            return .zero
+        }
+
+        return value
     }
 }
 
