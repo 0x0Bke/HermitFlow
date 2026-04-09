@@ -250,9 +250,7 @@ struct IslandRootView: View {
                 panelTopBar
 
                 if !store.sessions.isEmpty {
-                    usageSection
-                    sessionsSectionDivider
-                    sessionsSectionHeader
+                    sessionsSection
                 }
 
                 if let accessibilityPermissionMessage = store.accessibilityPermissionMessage {
@@ -377,12 +375,12 @@ private extension IslandRootView {
                 usageRow(row)
             }
         }
-        .padding(.bottom, 0)
+        .padding(.bottom, 2)
     }
 
     var sessionsSectionDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.04))
+            .fill(Color.white.opacity(0.2))
             .frame(height: 1)
     }
 
@@ -402,32 +400,99 @@ private extension IslandRootView {
         .padding(.bottom, 0)
     }
 
-    func approvalCard(_ request: ApprovalRequest) -> some View {
+    var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Approval Request")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
+            usageSection
+            sessionsSectionDivider
+            sessionsSectionHeader
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.12, green: 0.13, blue: 0.15).opacity(0.94),
+                            Color(red: 0.08, green: 0.09, blue: 0.11).opacity(0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
 
-                pendingApprovalBadge
+    func approvalCard(_ request: ApprovalRequest) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.badge.clock")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.48, green: 0.84, blue: 0.99))
+
+                        Text("Approval Request")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+
+                        pendingApprovalBadge
+                    }
+
+                    HStack(alignment: .center, spacing: 8) {
+                        approvalSourcePill(for: request.source)
+
+                        Text(approvalSessionTitle(for: request))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.68))
+                            .lineLimit(1)
+                    }
+                }
 
                 Spacer(minLength: 8)
 
                 Text(relativeTimestamp(for: request.createdAt))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.52))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.48))
             }
 
-            Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.white.opacity(0.92))
-                .lineLimit(3)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(approvalPrimaryTitle(for: request))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            if let rationale = request.rationale, !rationale.isEmpty {
-                Text(rationale)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.62))
-                    .lineLimit(3)
+                approvalSectionBlock(
+                    title: "Command",
+                    systemImage: "terminal",
+                    tint: Color(red: 0.48, green: 0.84, blue: 0.99),
+                    background: Color.black.opacity(0.5)
+                ) {
+                    Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let rationale = request.rationale, !rationale.isEmpty {
+                    approvalSectionBlock(
+                        title: "Reason",
+                        systemImage: "text.alignleft",
+                        tint: Color(red: 0.99, green: 0.80, blue: 0.46),
+                        background: Color.white.opacity(0.05)
+                    ) {
+                        Text(rationale)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(Color.white.opacity(0.76))
+                            .lineLimit(4)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
 
             if let approvalDiagnosticMessage = store.approvalDiagnosticMessage {
@@ -435,10 +500,11 @@ private extension IslandRootView {
             }
 
             if let focusTarget = request.focusTarget {
-                HStack {
-                    Text("Target: \(focusTarget.displayName)")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Color.white.opacity(0.5))
+                HStack(alignment: .center, spacing: 10) {
+                    approvalMetaChip(
+                        systemImage: "macwindow",
+                        text: "Target: \(focusTarget.displayName)"
+                    )
 
                     Spacer(minLength: 8)
 
@@ -450,18 +516,28 @@ private extension IslandRootView {
 
             Text("Awaiting action in the active CLI session. Return to Claude Code or Codex to allow, deny, or allow all.")
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Color.white.opacity(0.56))
+                .foregroundStyle(Color.white.opacity(0.54))
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
         }
-        .padding(14)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(red: 0.15, green: 0.19, blue: 0.26).opacity(0.92))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.14, green: 0.18, blue: 0.26).opacity(0.98),
+                            Color(red: 0.09, green: 0.12, blue: 0.18).opacity(0.96)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(red: 0.33, green: 0.78, blue: 0.95).opacity(0.24), lineWidth: 1)
+                .stroke(Color(red: 0.33, green: 0.78, blue: 0.95).opacity(0.26), lineWidth: 1)
         )
     }
 
@@ -522,11 +598,20 @@ private extension IslandRootView {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.17, green: 0.18, blue: 0.21).opacity(0.96),
+                            Color(red: 0.12, green: 0.13, blue: 0.16).opacity(0.94)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
         )
     }
 
@@ -618,6 +703,57 @@ private extension IslandRootView {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    func approvalSectionBlock<Content: View>(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        background: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint)
+
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.52))
+            }
+
+            content()
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(background)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+        )
+    }
+
+    func approvalMetaChip(systemImage: String, text: String) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.52))
+
+            Text(text)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Color.white.opacity(0.64))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
     }
 
     func focusArrowButton(action: @escaping () -> Void) -> some View {

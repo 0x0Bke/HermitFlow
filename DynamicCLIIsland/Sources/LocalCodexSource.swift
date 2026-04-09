@@ -170,17 +170,22 @@ struct LocalCodexSource: @unchecked Sendable {
     }
 
     func fetchLatestApprovalRequest() -> ApprovalRequest? {
+        fetchApprovalProbeResult().pendingRequest
+    }
+
+    func fetchApprovalProbeResult() -> CodexApprovalProbeResult {
         guard FileManager.default.fileExists(atPath: stateDatabaseURL.path) else {
-            return nil
+            return CodexApprovalProbeResult(pendingRequest: nil, resolvedRequestIDs: [])
         }
 
         let threadReferences = fetchRecentThreadReferences(limit: 4)
         guard !threadReferences.isEmpty else {
-            return nil
+            return CodexApprovalProbeResult(pendingRequest: nil, resolvedRequestIDs: [])
         }
 
         let globalState = fetchGlobalState()
         var newestApprovalRequest: ApprovalRequest?
+        var resolvedRequestIDs: Set<String> = []
 
         for threadReference in threadReferences {
             let sessionFileURL = fetchSessionFileURL(for: threadReference.threadID)
@@ -198,8 +203,14 @@ struct LocalCodexSource: @unchecked Sendable {
                 preferDesktopOrigin: shouldPreferDesktopOrigin
             )
 
-            guard let sessionFileURL,
-                  let approvalRequest = fetchPendingApproval(in: sessionFileURL, focusTarget: focusTarget) else {
+            guard let sessionFileURL else {
+                continue
+            }
+
+            let approvalProbe = fetchApprovalProbe(in: sessionFileURL, focusTarget: focusTarget)
+            resolvedRequestIDs.formUnion(approvalProbe.resolvedRequestIDs)
+
+            guard let approvalRequest = approvalProbe.pendingRequest else {
                 continue
             }
 
@@ -208,7 +219,10 @@ struct LocalCodexSource: @unchecked Sendable {
             }
         }
 
-        return newestApprovalRequest
+        return CodexApprovalProbeResult(
+            pendingRequest: newestApprovalRequest,
+            resolvedRequestIDs: resolvedRequestIDs
+        )
     }
 
     private func deriveActivityState(
@@ -573,12 +587,17 @@ struct LocalCodexSource: @unchecked Sendable {
     }
 
     private func fetchPendingApproval(in fileURL: URL, focusTarget: FocusTarget?) -> ApprovalRequest? {
+        fetchApprovalProbe(in: fileURL, focusTarget: focusTarget).pendingRequest
+    }
+
+    private func fetchApprovalProbe(in fileURL: URL, focusTarget: FocusTarget?) -> CodexApprovalProbeResult {
         let recentLines = readRecentLines(from: fileURL, maxBytes: recentSessionScanBytes)
         guard !recentLines.isEmpty else {
-            return nil
+            return CodexApprovalProbeResult(pendingRequest: nil, resolvedRequestIDs: [])
         }
 
         var pendingCalls: [String: PendingApprovalPayload] = [:]
+        var resolvedRequestIDs: Set<String> = []
 
         for line in recentLines {
             guard let data = String(line).data(using: .utf8) else {
@@ -596,6 +615,7 @@ struct LocalCodexSource: @unchecked Sendable {
             if payloadType == "function_call_output",
                let callID = payload["call_id"] as? String {
                 pendingCalls.removeValue(forKey: callID)
+                resolvedRequestIDs.insert(callID)
                 continue
             }
 
@@ -628,17 +648,23 @@ struct LocalCodexSource: @unchecked Sendable {
         }
 
         guard let latestPending = pendingCalls.values.max(by: { $0.timestamp < $1.timestamp }) else {
-            return nil
+            return CodexApprovalProbeResult(
+                pendingRequest: nil,
+                resolvedRequestIDs: resolvedRequestIDs
+            )
         }
 
-        return ApprovalRequest(
-            id: latestPending.callID,
-            commandSummary: summarizeCommand(latestPending.command),
-            rationale: latestPending.justification,
-            focusTarget: focusTarget,
-            createdAt: latestPending.timestamp,
-            source: .codex,
-            resolutionKind: .accessibilityAutomation
+        return CodexApprovalProbeResult(
+            pendingRequest: ApprovalRequest(
+                id: latestPending.callID,
+                commandSummary: summarizeCommand(latestPending.command),
+                rationale: latestPending.justification,
+                focusTarget: focusTarget,
+                createdAt: latestPending.timestamp,
+                source: .codex,
+                resolutionKind: .accessibilityAutomation
+            ),
+            resolvedRequestIDs: resolvedRequestIDs
         )
     }
 
@@ -1152,6 +1178,11 @@ private struct PendingApprovalPayload {
     let timestamp: Date
 }
 
+struct CodexApprovalProbeResult {
+    let pendingRequest: ApprovalRequest?
+    let resolvedRequestIDs: Set<String>
+}
+
 private struct LocalCodexSessionActivityHints {
     let taskStartedAt: TimeInterval
     let taskCompletedAt: TimeInterval
@@ -1202,7 +1233,6 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let listenerQueue = DispatchQueue(label: "HermitFlow.claudeHookListener")
     private let listenerPort: UInt16 = 46821
     private let sessionStaleThreshold: TimeInterval = 10 * 60
-    private let approvalTimeout: TimeInterval = 90
     private let successDisplayHold: TimeInterval = 1.25
     private let failureDisplayHold: TimeInterval = 2.0
     private let trailingRunningIgnoreWindow: TimeInterval = 2.0
@@ -1293,11 +1323,16 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     func resolveApproval(id: String, decision: ApprovalDecision) -> Bool {
         queue.sync {
             cleanupExpiredState(now: .now)
-            guard let approval = approvals.removeValue(forKey: id) else {
+            guard let approval = approvals[id] else {
                 approvalOrder.removeAll { $0 == id }
                 return false
             }
 
+            guard let connection = approval.connection else {
+                return false
+            }
+
+            approvals.removeValue(forKey: id)
             approvalOrder.removeAll { $0 == id }
 
             let response = makePermissionDecision(for: decision)
@@ -1305,7 +1340,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 status: 200,
                 body: response,
                 contentType: "application/json",
-                on: approval.connection
+                on: connection
             )
             return true
         }
@@ -1407,9 +1442,9 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     now: now
                 )
             }
-            // Once Claude emits a state event for the session, any previous
-            // permission prompt has already been resolved in the CLI.
-            clearApprovals(forSessionID: sessionID)
+            if shouldClearApprovals(for: payload) {
+                clearApprovals(forSessionID: sessionID)
+            }
             lastErrorMessage = nil
         }
 
@@ -1458,12 +1493,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
     private func cleanupConnection(_ connection: NWConnection) {
         queue.sync {
-            let matchingIDs = approvals.compactMap { key, approval in
-                approval.connection === connection ? key : nil
-            }
-            for id in matchingIDs {
-                approvals.removeValue(forKey: id)
-                approvalOrder.removeAll { $0 == id }
+            for approval in approvals.values where approval.connection === connection {
+                approval.connection = nil
             }
         }
     }
@@ -1477,23 +1508,30 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
     }
 
+    private func shouldClearApprovals(for payload: ClaudeHookEventPayload) -> Bool {
+        if payload.event == "SessionEnd" {
+            return true
+        }
+
+        if ClaudeTrackedSession.isExplicitRunningEvent(payload.event) {
+            return true
+        }
+
+        switch payload.event {
+        case "PostToolUse", "PostToolUseFailure", "StopFailure", "Stop", "PostCompact":
+            return true
+        default:
+            break
+        }
+
+        return false
+    }
+
     private func cleanupExpiredState(now: Date) {
         sessions = sessions.filter { _, session in
             now.timeIntervalSince(session.lastActivityAt) <= sessionStaleThreshold
         }
 
-        let expiredApprovalIDs = approvals.compactMap { key, approval in
-            now.timeIntervalSince(approval.createdAt) > approvalTimeout ? key : nil
-        }
-        for id in expiredApprovalIDs {
-            if let approval = approvals.removeValue(forKey: id) {
-                let response = makePermissionDecision(for: .reject, message: "Approval timed out in HermitFlow")
-                sendHTTPResponse(status: 200, body: response, contentType: "application/json", on: approval.connection)
-            }
-        }
-        if !expiredApprovalIDs.isEmpty {
-            approvalOrder.removeAll { expiredApprovalIDs.contains($0) }
-        }
     }
 
     private func latestApprovalRequestLocked() -> ApprovalRequest? {
@@ -2316,7 +2354,7 @@ private final class ClaudePendingApproval {
     let createdAt: Date
     let commandSummary: String
     let rationale: String?
-    let connection: NWConnection
+    var connection: NWConnection?
 
     init(
         id: String,
