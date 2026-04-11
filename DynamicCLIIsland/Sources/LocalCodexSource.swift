@@ -1575,6 +1575,27 @@ final class LocalClaudeSource: @unchecked Sendable {
     func resolveApproval(id: String, decision: ApprovalDecision) -> Bool {
         bridge.resolveApproval(id: id, decision: decision)
     }
+
+    func startCallbackServer() {
+        bridge.start()
+    }
+
+    func installHooks() throws {
+        bridge.start()
+        try bridge.installHooks()
+    }
+
+    func uninstallHooks() throws {
+        try bridge.uninstallHooks()
+    }
+
+    func hookHealthReport() -> SourceHealthReport {
+        bridge.hookHealthReport()
+    }
+
+    func callbackServerHealthReport() -> SourceHealthReport {
+        bridge.callbackServerHealthReport()
+    }
 }
 
 private final class ClaudeHookBridge: @unchecked Sendable {
@@ -1594,6 +1615,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let hookScriptName = "hermit-claude-hook.js"
     private let hookMarker = "hermit-claude-hook.js"
     private let permissionHookPath = "/permission/hermitflow"
+    private let claudeUsageCacheURL = URL(fileURLWithPath: "/tmp/hermitflow-rl.json")
+    private let claudeStatusLineDebugURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
     private let claudeHistoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/history.jsonl")
     private let claudeProjectsRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
     private let claudeDebugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-debug.log")
@@ -1608,6 +1631,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     }()
 
     private var listener: NWListener?
+    private var listenerReady = false
     private var sessions: [String: ClaudeTrackedSession] = [:]
     private var approvals: [String: ClaudePendingApproval] = [:]
     private var approvalOrder: [String] = []
@@ -1620,6 +1644,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             }
 
             do {
+                listenerReady = false
                 let port = NWEndpoint.Port(rawValue: listenerPort) ?? .any
                 let listener = try NWListener(using: .tcp, on: port)
                 listener.newConnectionHandler = { [weak self] connection in
@@ -1632,14 +1657,46 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 self.listener = listener
             } catch {
                 lastErrorMessage = "Claude hook listener unavailable"
+                listenerReady = false
             }
+        }
+    }
+
+    func installHooks() throws {
+        try writeHookScriptIfNeeded()
+        try syncClaudeSettings()
+        queue.sync {
+            lastErrorMessage = nil
+        }
+    }
+
+    func uninstallHooks() throws {
+        let settingsURLs = try resolvedClaudeSettingsURLs()
+        for settingsURL in settingsURLs {
+            try removeManagedHooks(from: settingsURL)
+        }
+
+        let scriptURL = hookRootURL.appendingPathComponent(hookScriptName)
+        if FileManager.default.fileExists(atPath: scriptURL.path) {
+            try FileManager.default.removeItem(at: scriptURL)
+        }
+
+        if FileManager.default.fileExists(atPath: claudeUsageCacheURL.path) {
+            try? FileManager.default.removeItem(at: claudeUsageCacheURL)
+        }
+
+        if FileManager.default.fileExists(atPath: claudeStatusLineDebugURL.path) {
+            try? FileManager.default.removeItem(at: claudeStatusLineDebugURL)
+        }
+
+        queue.sync {
+            lastErrorMessage = nil
         }
     }
 
     func syncHooks() {
         do {
-            try writeHookScriptIfNeeded()
-            try syncClaudeSettings()
+            try installHooks()
             queue.sync {
                 lastErrorMessage = nil
             }
@@ -1682,6 +1739,18 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
     }
 
+    func hookHealthReport() -> SourceHealthReport {
+        queue.sync {
+            SourceHealthReport(sourceName: "Claude", issues: hookIssuesLocked())
+        }
+    }
+
+    func callbackServerHealthReport() -> SourceHealthReport {
+        queue.sync {
+            SourceHealthReport(sourceName: "Claude", issues: callbackServerIssuesLocked())
+        }
+    }
+
     func resolveApproval(id: String, decision: ApprovalDecision) -> Bool {
         queue.sync {
             cleanupExpiredState(now: .now)
@@ -1713,9 +1782,14 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             switch state {
             case .ready:
                 lastErrorMessage = nil
+                listenerReady = true
             case let .failed(error):
                 lastErrorMessage = "Claude hook listener failed: \(error.localizedDescription)"
+                listenerReady = false
                 listener?.cancel()
+                listener = nil
+            case .cancelled:
+                listenerReady = false
                 listener = nil
             default:
                 break
@@ -1858,9 +1932,18 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
     private func cleanupConnection(_ connection: NWConnection) {
         queue.sync {
-            for approval in approvals.values where approval.connection === connection {
-                approval.connection = nil
+            let resolvedApprovalIDs = approvals.compactMap { approvalID, approval in
+                approval.connection === connection ? approvalID : nil
             }
+
+            guard !resolvedApprovalIDs.isEmpty else {
+                return
+            }
+
+            for approvalID in resolvedApprovalIDs {
+                approvals.removeValue(forKey: approvalID)
+            }
+            approvalOrder.removeAll { resolvedApprovalIDs.contains($0) }
         }
     }
 
@@ -1890,6 +1973,129 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
 
         return false
+    }
+
+    private func hookIssuesLocked() -> [DiagnosticIssue] {
+        var issues: [DiagnosticIssue] = []
+
+        if resolvedNodeBinaryPathIfAvailable() == nil {
+            issues.append(
+                SourceErrorMapper.issue(
+                    source: "Claude",
+                    severity: .warning,
+                    message: "Node.js is unavailable for the managed Claude hook script.",
+                    recoverySuggestion: "Install Node.js or add it to PATH, then run “Resync Claude Hooks”.",
+                    isRepairable: true
+                )
+            )
+        }
+
+        let scriptURL = hookRootURL.appendingPathComponent(hookScriptName)
+        if !FileManager.default.fileExists(atPath: scriptURL.path) {
+            issues.append(
+                SourceErrorMapper.issue(
+                    source: "Claude",
+                    severity: .warning,
+                    message: "The managed Claude hook script is missing.",
+                    recoverySuggestion: "Run “Resync Claude Hooks” to recreate the local hook script.",
+                    isRepairable: true
+                )
+            )
+        }
+
+        do {
+            let settingsURLs = try resolvedClaudeSettingsURLs()
+            if settingsURLs.isEmpty {
+                issues.append(
+                    SourceErrorMapper.issue(
+                        source: "Claude",
+                        severity: .warning,
+                        message: "No Claude settings file was found for managed hook installation.",
+                        recoverySuggestion: "Create ~/.claude/settings.json or provide a custom settings path.",
+                        isRepairable: true
+                    )
+                )
+            } else {
+                for settingsURL in settingsURLs {
+                    do {
+                        let settings = try loadJSONObjectIfPresent(at: settingsURL) ?? [:]
+                        if !settingsContainsManagedHooks(settings) {
+                            issues.append(
+                                SourceErrorMapper.issue(
+                                    source: "Claude",
+                                    severity: .warning,
+                                    message: "Managed Claude hook entries are missing or have drifted in \(settingsURL.path).",
+                                    recoverySuggestion: "Run “Resync Claude Hooks” to restore the managed entries.",
+                                    isRepairable: true
+                                )
+                            )
+                        }
+                    } catch {
+                        issues.append(
+                            SourceErrorMapper.issue(
+                                source: "Claude",
+                                error: error,
+                                severity: .error,
+                                recoverySuggestion: "Repair the settings file JSON and resync the managed hooks.",
+                                isRepairable: true
+                            )
+                        )
+                    }
+                }
+            }
+        } catch {
+            issues.append(
+                SourceErrorMapper.issue(
+                    source: "Claude",
+                    error: error,
+                    severity: .error,
+                    recoverySuggestion: "Inspect the configured Claude settings paths and repair them locally.",
+                    isRepairable: true
+                )
+            )
+        }
+
+        return issues
+    }
+
+    private func callbackServerIssuesLocked() -> [DiagnosticIssue] {
+        if listenerReady {
+            return []
+        }
+
+        if let lastErrorMessage, !lastErrorMessage.isEmpty {
+            return [
+                SourceErrorMapper.issue(
+                    source: "Claude",
+                    severity: .warning,
+                    message: lastErrorMessage,
+                    recoverySuggestion: "Restart or resync the Claude hook integration to recover the local callback listener.",
+                    isRepairable: true
+                )
+            ]
+        }
+
+        if listener != nil {
+            return [
+                SourceErrorMapper.issue(
+                    source: "Claude",
+                    severity: .info,
+                    message: "The local Claude callback listener is still starting.",
+                    recoverySuggestion: nil,
+                    isRepairable: false
+                )
+            ]
+        }
+
+        return [
+            SourceErrorMapper.issue(
+                source: "Claude",
+                severity: .warning,
+                message: "The local Claude callback listener is not running.",
+                recoverySuggestion: "Run “Resync Claude Hooks” to restart the local callback listener.",
+                isRepairable: true
+            )
+        ]
     }
 
     private func cleanupExpiredState(now: Date) {
@@ -1940,6 +2146,9 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 "snapshot session=\(session.rawSessionID) cwd=\(session.cwd) hook=\(session.lastEvent):\(session.status.debugLabel)@\(session.lastActivityAt.timeIntervalSince1970) project=\(projectState?.lastEvent ?? "nil"):\(projectState?.status.debugLabel ?? "nil")@\(projectState?.at.timeIntervalSince1970 ?? 0) interrupt=\(interruptionState?.at.timeIntervalSince1970 ?? 0) refreshed=\(refreshedSession.lastEvent):\(refreshedSession.status.debugLabel)@\(refreshedSession.lastActivityAt.timeIntervalSince1970)"
             )
             let resolvedStatus = resolvedStatus(for: refreshedSession, now: .now)
+            if resolvedStatus.activityState != .running {
+                clearApprovals(forSessionID: session.rawSessionID)
+            }
             let summarizedSession = ClaudeTrackedSession(
                 rawSessionID: session.rawSessionID,
                 cwd: refreshedSession.cwd,
@@ -2546,7 +2755,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             try? handle.close()
         }
 
-        try? handle.seekToEnd()
+        _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: data)
     }
 
@@ -2754,6 +2963,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         let content = """
         #!/usr/bin/env node
         const http = require("http");
+        const fs = require("fs");
+        const path = require("path");
 
         const EVENT_TO_STATE = {
           SessionStart: "idle",
@@ -2772,8 +2983,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
           Elicitation: "notification",
           WorktreeCreate: "carrying"
         };
+        const USAGE_CACHE_PATH = \(String(reflecting: claudeUsageCacheURL.path));
+        const STATUSLINE_DEBUG_PATH = \(String(reflecting: claudeStatusLineDebugURL.path));
 
         const event = process.argv[2];
+        if (event === "StatusLine") {
+          handleStatusLine();
+        }
         if (!EVENT_TO_STATE[event]) process.exit(0);
 
         const chunks = [];
@@ -2791,6 +3007,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
           try {
             payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
           } catch {}
+
+          writeUsageSnapshot(payload);
 
           const body = JSON.stringify({
             event,
@@ -2823,8 +3041,139 @@ private final class ClaudeHookBridge: @unchecked Sendable {
           req.write(body);
           req.end();
         }
+
+        function handleStatusLine() {
+          const input = readAllStdin();
+          let payload = {};
+          try {
+            payload = JSON.parse(input);
+          } catch {}
+
+          writeStatusLineDebug(payload);
+          writeUsageSnapshot(payload);
+
+          const model = payload?.model?.display_name;
+          const contextRemaining = normalizePercentage(payload?.context_window?.remaining_percentage);
+          const parts = [];
+          if (typeof model === "string" && model.trim().length > 0) {
+            parts.push(model.trim());
+          }
+          if (contextRemaining != null) {
+            parts.push(`${Math.round(contextRemaining * 100)}% ctx`);
+          }
+          process.stdout.write(parts.join(" | "));
+          process.exit(0);
+        }
+
+        function readAllStdin() {
+          try {
+            return fs.readFileSync(0, "utf8");
+          } catch {
+            return "";
+          }
+        }
+
+        function writeUsageSnapshot(payload) {
+          const fiveHour = findWindow("five_hour", payload);
+          const sevenDay = findWindow("seven_day", payload);
+          if (!fiveHour && !sevenDay) return;
+
+          const usage = {};
+          if (fiveHour) usage.five_hour = fiveHour;
+          if (sevenDay) usage.seven_day = sevenDay;
+
+          try {
+            const directory = path.dirname(USAGE_CACHE_PATH);
+            fs.mkdirSync(directory, { recursive: true });
+            const tempPath = `${USAGE_CACHE_PATH}.tmp`;
+            fs.writeFileSync(tempPath, JSON.stringify(usage, null, 2), "utf8");
+            fs.renameSync(tempPath, USAGE_CACHE_PATH);
+          } catch {}
+        }
+
+        function writeStatusLineDebug(payload) {
+          try {
+            const directory = path.dirname(STATUSLINE_DEBUG_PATH);
+            fs.mkdirSync(directory, { recursive: true });
+            const tempPath = `${STATUSLINE_DEBUG_PATH}.tmp`;
+            fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+            fs.renameSync(tempPath, STATUSLINE_DEBUG_PATH);
+          } catch {}
+        }
+
+        function findWindow(targetKey, value) {
+          if (!value) return null;
+
+          if (Array.isArray(value)) {
+            for (const item of value) {
+              const nested = findWindow(targetKey, item);
+              if (nested) return nested;
+            }
+            return null;
+          }
+
+          if (typeof value !== "object") return null;
+
+          if (Object.prototype.hasOwnProperty.call(value, targetKey)) {
+            return normalizeWindow(value[targetKey]);
+          }
+
+          for (const nestedValue of Object.values(value)) {
+            const nested = findWindow(targetKey, nestedValue);
+            if (nested) return nested;
+          }
+
+          return null;
+        }
+
+        function normalizeWindow(candidate) {
+          if (!candidate || typeof candidate !== "object") return null;
+
+          const rawPercentage = normalizePercentage(candidate.used_percentage ?? candidate.utilization);
+          if (rawPercentage == null) return null;
+
+          const normalized = { used_percentage: rawPercentage };
+          const resetsAt = normalizeDate(candidate.resets_at);
+          if (resetsAt) normalized.resets_at = resetsAt;
+          return normalized;
+        }
+
+        function normalizePercentage(value) {
+          if (value == null) return null;
+          const numeric = typeof value === "number" ? value : Number(value);
+          if (!Number.isFinite(numeric)) return null;
+          if (numeric > 1) return clamp(numeric / 100, 0, 1);
+          return clamp(numeric, 0, 1);
+        }
+
+        function normalizeDate(value) {
+          if (value == null) return null;
+          if (typeof value === "number" && Number.isFinite(value)) {
+            return new Date(value * 1000).toISOString();
+          }
+          if (typeof value === "string" && value.trim().length > 0) {
+            const timestamp = Number(value);
+            if (Number.isFinite(timestamp)) {
+              return new Date(timestamp * 1000).toISOString();
+            }
+
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+              return parsed.toISOString();
+            }
+          }
+          return null;
+        }
+
+        function clamp(value, min, max) {
+          return Math.min(Math.max(value, min), max);
+        }
         """
         try content.write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
     }
 
     private func syncClaudeSettings() throws {
@@ -2899,6 +3248,10 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
         var updatedSettings = settings
         updatedSettings["hooks"] = hooks
+        updatedSettings["statusLine"] = [
+            "type": "command",
+            "command": "\"\(nodePath)\" \"\(scriptPath)\" StatusLine"
+        ]
         try writeJSONObject(updatedSettings, to: settingsURL)
     }
 
@@ -3011,6 +3364,53 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         try data.write(to: url, options: .atomic)
     }
 
+    private func removeManagedHooks(from settingsURL: URL) throws {
+        let settings = try loadJSONObjectIfPresent(at: settingsURL) ?? [:]
+        let existingHooks = settings["hooks"] as? [String: Any]
+
+        var updatedHooks: [String: Any] = [:]
+        if let existingHooks {
+            for (event, value) in existingHooks {
+                let cleanedEntries = removingManagedHooks(from: value)
+                if !cleanedEntries.isEmpty {
+                    updatedHooks[event] = cleanedEntries
+                }
+            }
+        }
+
+        var updatedSettings = settings
+        if updatedHooks.isEmpty {
+            updatedSettings.removeValue(forKey: "hooks")
+        } else {
+            updatedSettings["hooks"] = updatedHooks
+        }
+
+        if let statusLine = settings["statusLine"] as? [String: Any],
+           isManagedStatusLine(statusLine) {
+            updatedSettings.removeValue(forKey: "statusLine")
+        }
+
+        try writeJSONObject(updatedSettings, to: settingsURL)
+    }
+
+    private func removingManagedHooks(from existingValue: Any?) -> [[String: Any]] {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        return entries.compactMap { entry in
+            guard var hooks = entry["hooks"] as? [[String: Any]] else {
+                return entry
+            }
+
+            hooks.removeAll(where: isManagedHook)
+            guard !hooks.isEmpty else {
+                return nil
+            }
+
+            var updated = entry
+            updated["hooks"] = hooks
+            return updated
+        }
+    }
+
     private func upsertCommandHook(into existingValue: Any?, command: String) -> [[String: Any]] {
         var entries = (existingValue as? [[String: Any]]) ?? []
         var found = false
@@ -3098,7 +3498,103 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         ]
     }
 
+    private func settingsContainsManagedHooks(_ settings: [String: Any]) -> Bool {
+        guard let hooks = settings["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        let commandEvents = [
+            "SessionStart",
+            "SessionEnd",
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "StopFailure",
+            "Stop",
+            "SubagentStart",
+            "SubagentStop",
+            "PreCompact",
+            "PostCompact",
+            "Notification",
+            "Elicitation",
+            "WorktreeCreate"
+        ]
+
+        let hasManagedCommands = commandEvents.allSatisfy { event in
+            containsManagedCommandHook(hooks[event])
+        }
+        let hasManagedPermissionHook = containsManagedPermissionHook(hooks["PermissionRequest"])
+        let hasManagedStatusLine = containsManagedStatusLine(settings["statusLine"])
+        return hasManagedCommands && hasManagedPermissionHook && hasManagedStatusLine
+    }
+
+    private func containsManagedCommandHook(_ existingValue: Any?) -> Bool {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        for entry in entries {
+            guard let hooks = entry["hooks"] as? [[String: Any]] else {
+                continue
+            }
+
+            if hooks.contains(where: isManagedHook) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func containsManagedPermissionHook(_ existingValue: Any?) -> Bool {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        for entry in entries {
+            guard let hooks = entry["hooks"] as? [[String: Any]] else {
+                continue
+            }
+
+            if hooks.contains(where: { hook in
+                if let url = hook["url"] as? String {
+                    return ownedPermissionHookURLs.contains(url)
+                }
+                return false
+            }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func containsManagedStatusLine(_ value: Any?) -> Bool {
+        guard let statusLine = value as? [String: Any] else {
+            return false
+        }
+
+        return isManagedStatusLine(statusLine)
+    }
+
+    private func isManagedStatusLine(_ value: [String: Any]) -> Bool {
+        guard let command = value["command"] as? String else {
+            return false
+        }
+
+        return command.contains(hookMarker)
+    }
+
+    private func isManagedHook(_ hook: [String: Any]) -> Bool {
+        if let command = hook["command"] as? String, command.contains(hookMarker) {
+            return true
+        }
+
+        if let url = hook["url"] as? String, ownedPermissionHookURLs.contains(url) {
+            return true
+        }
+
+        return false
+    }
+
     private func resolveNodeBinary() -> String {
+        resolvedNodeBinaryPathIfAvailable() ?? "node"
+    }
+
+    private func resolvedNodeBinaryPathIfAvailable() -> String? {
         let fileManager = FileManager.default
         let candidates = [
             "/opt/homebrew/bin/node",
@@ -3129,7 +3625,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             }
         } catch {}
 
-        return "node"
+        return nil
     }
 
     private func describeClaudeHookConfigurationError(_ error: Error) -> String {

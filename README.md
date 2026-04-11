@@ -20,6 +20,8 @@ Together, the name describes AI and task flows that live inside the system and k
 - Aggregates recent local sessions from both `Claude Code` and `Codex`
 - Shows session origin, working directory, runtime status, and last update time
 - Detects approval requests and lets you handle them directly from the island or panel
+- Reads local-first usage snapshots for both `Claude Code` and `Codex`
+- Renders Claude/Codex usage bars in the expanded panel without requiring network access
 - Provides one-click focus targets for supported sessions
 - Status bar menu supports show/hide and switching the left-side brand logo
 - Status bar menu supports manual `Resync Claude Hooks`
@@ -60,6 +62,12 @@ On launch, the app polls local files under `~/.codex` and aggregates recent Code
 
 If these files are missing, HermitFlow still runs, but Codex state will be shown as unavailable or idle.
 
+HermitFlow also reads Codex usage locally from rollout logs under:
+
+- `~/.codex/sessions/**/rollout-*.jsonl`
+
+The app scans the newest rollout files first and extracts the latest valid local `token_count.rate_limits` payload. If rollout usage data is missing, malformed, or unavailable, the rest of the app continues to work and the usage row is simply omitted.
+
 ### Claude Code
 
 HermitFlow is already integrated with Claude Code. On launch, it performs the following setup steps:
@@ -76,6 +84,12 @@ In practice:
 - Claude approvals do not require macOS Accessibility permissions
 
 If `node` is not available on the machine, Claude hook integration will not work.
+
+HermitFlow can also read Claude usage locally from its own managed cache file:
+
+- `/tmp/hermitflow-rl.json`
+
+This file is optional and local-only. HermitFlow writes it from its own Claude hook and `statusLine` bridge when upstream Claude payloads expose compatible usage fields. No network requests are made for usage. If the file does not exist, Claude usage is simply not shown.
 
 ## Requirements
 
@@ -104,10 +118,28 @@ If Claude hook initialization fails, the app still runs, but Claude Code status 
 - Single-click the island: hidden -> island, or island -> panel
 - Double-click the island: island/panel -> hidden
 - Open the panel to inspect recent sessions, approval requests, and session details
+- The expanded panel can also show local usage bars for `Claude` and `Codex`
 - When an approval request exists, the island expands into an inline approval card
+- If an approval is handled directly in the terminal, HermitFlow collapses the approval UI after the local sources observe that the request has been resolved or has disappeared
 - The `Diagnostic` card shows Claude hook sync failures
 - Use `Resync Claude Hooks` from either the panel or the status bar menu to retry hook synchronization
 - Use the status bar icon to show/hide the window and switch the left-side logo
+
+### Usage Section
+
+The expanded panel shows local usage in the same card stack as the session list:
+
+- `Claude`: `5h` and `wk` remaining percentage bars when a local Claude usage cache exists
+- `Codex`: `5h` and `wk` remaining percentage bars when local rollout usage data exists
+
+The usage section is local-first and optional:
+
+- no usage file: the panel still works and the usage rows are omitted
+- stale or malformed usage file: the panel still works and the invalid provider row is omitted
+
+The current UI shows remaining quota rather than used quota.
+
+For Claude, usage visibility depends on the local payload shape. Official Claude-style `rate_limits.five_hour` and `rate_limits.seven_day` fields are rendered as `5h` and `wk`. Some third-party Anthropic-compatible models expose only context-window data or omit rate-limit fields entirely, in which case Claude usage will be absent even though Claude activity and approvals still work.
 
 ## Permissions And Configuration
 
@@ -176,10 +208,18 @@ To build a `Debug` package:
 
 - `HermitFlow.xcodeproj`: Xcode project
 - `DynamicCLIIsland/`: main application source
+- `DynamicCLIIsland/App/`: app environment and bootstrap composition
+- `DynamicCLIIsland/Core/`: shared models, reducers, protocols, utilities, and events
+- `DynamicCLIIsland/State/`: app, runtime, and presentation stores
 - `DynamicCLIIsland/Views/`: SwiftUI UI
+- `DynamicCLIIsland/Views/Approval/`: approval-specific views
+- `DynamicCLIIsland/Views/Diagnostics/`: diagnostics-specific views
+- `DynamicCLIIsland/Views/Usage/`: local usage cards and summaries
 - `DynamicCLIIsland/Stores/`: state aggregation and UI state management
 - `DynamicCLIIsland/Sources/`: local Claude/Codex sources and hook integration
-- `DynamicCLIIsland/Services/`: focus, approval execution, and system integration
+- `DynamicCLIIsland/Services/`: focus, approval execution, diagnostics, usage, and system integration
+- `DynamicCLIIsland/Coordinators/`: extracted window, menu bar, and monitoring coordinators
+- `DynamicCLIIsland/Legacy/`: compatibility adapters kept during the refactor
 - `DynamicCLIIsland/Resources/`: bundled image assets and resource licensing file
 - `scripts/package.sh`: local packaging script
 - `dist/`: packaging output directory
@@ -187,6 +227,8 @@ To build a `Debug` package:
 ## Known Limits
 
 - HermitFlow depends on local Claude/Codex files and processes and does not provide remote sync
+- Usage is local-cache based and may be temporarily absent even when Claude/Codex is installed
+- Claude usage depends on the local Claude payload shape; some third-party Anthropic-compatible providers do not expose `5h` / `7d` rate-limit windows
 - Claude Code integration depends on local hook support and `node`
 - Codex auto-approval depends on Accessibility permission and terminal foreground control
 - If a CLI session has already exited or its window is gone, some focus targets may no longer work
