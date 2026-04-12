@@ -39,12 +39,12 @@ struct ApprovalInlineView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.bottom, 8)
+                .padding(.bottom, 12)
 
-                Rectangle()
-                    .fill(Color.white.opacity(0.06))
-                    .frame(height: 1)
-                    .padding(.bottom, 12)
+//                Rectangle()
+//                    .fill(Color.white.opacity(0.06))
+//                    .frame(height: 1)
+//                    .padding(.bottom, 12)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .center, spacing: 8) {
@@ -99,13 +99,22 @@ struct ApprovalInlineView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
-                )
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.08, green: 0.09, blue: 0.10).opacity(0.98),
+                                            Color(red: 0.04, green: 0.05, blue: 0.06).opacity(0.96)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(Color(red: 0.32, green: 0.96, blue: 0.38).opacity(0.20), lineWidth: 1)
+                        )
                 .padding(.bottom, 12)
 
                 HStack(spacing: 8) {
