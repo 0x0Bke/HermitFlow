@@ -2,6 +2,8 @@ import SwiftUI
 
 struct IslandRootView: View {
     @ObservedObject var store: ProgressStore
+    @State private var activePanelTransition: PanelTransition?
+    @State private var panelTransitionCleanupTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -13,23 +15,10 @@ struct IslandRootView: View {
                             .strokeBorder(borderColor, lineWidth: 1)
                     )
 
-                Group {
-                    if store.displayMode == .panel {
-                        expandedBody
-                    } else if store.hasInlineApprovalIsland, let approvalRequest = store.approvalRequest {
-                        inlineApprovalBody(approvalRequest)
-                    } else if store.displayMode == .island {
-                        compactBody
-                    } else {
-                        EmptyView()
-                    }
-                }
-                .animation(nil, value: store.displayMode)
-                .animation(nil, value: store.hasInlineApprovalIsland)
-                .animation(nil, value: store.approvalRequest?.id)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                bodyContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                if store.displayMode != .panel && !store.hasInlineApprovalIsland {
+                if !shouldBlockCompactGestureOverlay {
                     Color.clear
                         .contentShape(islandShape)
                         .gesture(primaryClickGesture)
@@ -44,6 +33,28 @@ struct IslandRootView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            activePanelTransition = nil
+        }
+        .onChange(of: store.displayMode) { oldValue, newValue in
+            handleDisplayModeChange(from: oldValue, to: newValue)
+        }
+    }
+
+    @ViewBuilder
+    private var bodyContent: some View {
+        if shouldHoldPanelBody {
+            expandedBody
+                .allowsHitTesting(store.displayMode == .panel)
+        } else if store.hasInlineApprovalIsland, let approvalRequest = store.approvalRequest {
+            inlineApprovalBody(approvalRequest)
+        } else if store.displayMode == .panel {
+            expandedBody
+        } else if store.displayMode == .island {
+            compactBody
+        } else {
+            EmptyView()
+        }
     }
 
     private var primaryClickGesture: some Gesture {
@@ -64,7 +75,7 @@ struct IslandRootView: View {
             return Color.black.opacity(0.001)
         }
 
-        if store.displayMode == .panel {
+        if shouldUsePanelSurfaceStyling {
             return Color.black
         }
 
@@ -72,7 +83,7 @@ struct IslandRootView: View {
     }
 
     private var borderColor: Color {
-        if store.isHiddenMode || store.isExpanded {
+        if store.isHiddenMode || shouldUsePanelSurfaceStyling {
             return .clear
         }
 
@@ -85,6 +96,18 @@ struct IslandRootView: View {
     }
 
     private var compactHorizontalPadding: CGFloat { 36 }
+
+    private var shouldHoldPanelBody: Bool {
+        activePanelTransition != nil
+    }
+
+    private var shouldUsePanelSurfaceStyling: Bool {
+        store.displayMode == .panel || activePanelTransition != nil
+    }
+
+    private var shouldBlockCompactGestureOverlay: Bool {
+        store.displayMode == .panel || store.hasInlineApprovalIsland || activePanelTransition != nil
+    }
 
     private var railWidth: CGFloat {
         max((store.windowSize.width - store.cameraGapWidth - compactHorizontalPadding * 2) / 2, 0)
@@ -172,7 +195,7 @@ struct IslandRootView: View {
         TabCutShape(
             neckInset: 20,
             shoulderDrop: 12,
-            bottomRadius: store.isExpanded ? 24 : 20
+            bottomRadius: shouldUsePanelSurfaceStyling ? 24 : 20
         )
     }
 
@@ -221,6 +244,37 @@ struct IslandRootView: View {
         }
     }
 
+    private func handleDisplayModeChange(
+        from oldValue: ProgressStore.DisplayMode,
+        to newValue: ProgressStore.DisplayMode
+    ) {
+        let modes: Set<ProgressStore.DisplayMode> = [oldValue, newValue]
+        guard modes == [.island, .panel] else {
+            panelTransitionCleanupTask?.cancel()
+            activePanelTransition = nil
+            return
+        }
+
+        let transition = PanelTransition(from: oldValue, to: newValue)
+        activePanelTransition = transition
+        panelTransitionCleanupTask?.cancel()
+        panelTransitionCleanupTask = Task { @MainActor in
+            try? await Task.sleep(
+                nanoseconds: UInt64(store.panelTransition.windowDuration * 1_000_000_000)
+            )
+            guard !Task.isCancelled, activePanelTransition == transition else {
+                return
+            }
+
+            activePanelTransition = nil
+        }
+    }
+
+}
+
+private struct PanelTransition: Equatable {
+    let from: ProgressStore.DisplayMode
+    let to: ProgressStore.DisplayMode
 }
 
 private extension IslandRootView {
@@ -440,7 +494,7 @@ private extension IslandRootView {
                 Spacer(minLength: 8)
 
                 if let focusTarget = session.focusTarget {
-                    focusArrowButton {
+                    focusArrowButton(helpText: "Open \(focusTarget.displayName)") {
                         store.bringForward(focusTarget)
                     }
                 }
@@ -542,7 +596,7 @@ private extension IslandRootView {
         )
     }
 
-    func focusArrowButton(action: @escaping () -> Void) -> some View {
+    func focusArrowButton(helpText: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "arrow.up.right")
                 .font(.system(size: 10, weight: .semibold))
@@ -550,6 +604,7 @@ private extension IslandRootView {
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(.plain)
+        .help(helpText ?? "Bring forward")
     }
 
     func panelActionButton(title: String, action: @escaping () -> Void) -> some View {

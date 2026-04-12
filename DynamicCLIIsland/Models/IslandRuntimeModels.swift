@@ -120,7 +120,7 @@ enum ApprovalResolutionKind: String, Hashable {
     case localHTTPHook
 }
 
-enum TerminalClient: String, Hashable {
+enum TerminalClient: String, Hashable, Codable {
     case warp
     case iTerm
     case terminal
@@ -155,6 +155,8 @@ struct FocusTarget: Hashable {
     let displayName: String
     let cwd: String?
     let terminalClient: TerminalClient?
+    let terminalSessionHint: String?
+    let workspaceHint: String?
 }
 
 struct ApprovalRequest: Identifiable, Hashable {

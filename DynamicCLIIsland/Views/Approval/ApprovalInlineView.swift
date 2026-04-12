@@ -5,7 +5,24 @@
 //  Phase 5 approval presentation wrapper.
 //
 
+import AppKit
 import SwiftUI
+
+private enum ApprovalSelection: Int, CaseIterable {
+    case deny
+    case allowOnce
+    case alwaysAllow
+
+    static let defaultSelection: ApprovalSelection = .allowOnce
+
+    func moveLeft() -> ApprovalSelection {
+        ApprovalSelection(rawValue: max(rawValue - 1, 0)) ?? self
+    }
+
+    func moveRight() -> ApprovalSelection {
+        ApprovalSelection(rawValue: min(rawValue + 1, Self.allCases.count - 1)) ?? self
+    }
+}
 
 struct ApprovalInlineView: View {
     @ObservedObject var store: ProgressStore
@@ -15,6 +32,8 @@ struct ApprovalInlineView: View {
     let primaryTitle: String
     let timestampText: String
     let diagnosticMessage: String?
+
+    @State private var selectedAction: ApprovalSelection = .defaultSelection
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,12 +58,7 @@ struct ApprovalInlineView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.bottom, 8)
-
-                Rectangle()
-                    .fill(Color.white.opacity(0.06))
-                    .frame(height: 1)
-                    .padding(.bottom, 12)
+                .padding(.bottom, 12)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .center, spacing: 8) {
@@ -100,16 +114,26 @@ struct ApprovalInlineView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.05))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.08, green: 0.09, blue: 0.10).opacity(0.98),
+                                    Color(red: 0.04, green: 0.05, blue: 0.06).opacity(0.96)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                        .stroke(Color(red: 0.32, green: 0.96, blue: 0.38).opacity(0.20), lineWidth: 1)
                 )
                 .padding(.bottom, 12)
 
                 HStack(spacing: 8) {
                     decisionButton(
+                        selection: .deny,
                         title: "Deny",
                         systemImage: "xmark",
                         titleColor: Color(red: 1.0, green: 0.42, blue: 0.42),
@@ -120,6 +144,7 @@ struct ApprovalInlineView: View {
                     )
 
                     decisionButton(
+                        selection: .allowOnce,
                         title: "Allow Once",
                         systemImage: "checkmark",
                         titleColor: .white,
@@ -128,6 +153,7 @@ struct ApprovalInlineView: View {
                     )
 
                     decisionButton(
+                        selection: .alwaysAllow,
                         title: "Always Allow",
                         systemImage: "checkmark.circle",
                         titleColor: Color(red: 0.63, green: 0.63, blue: 0.67),
@@ -149,6 +175,19 @@ struct ApprovalInlineView: View {
         }
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            ApprovalInlineKeyboardBridge(
+                requestID: request.id,
+                onLeft: { selectedAction = selectedAction.moveLeft() },
+                onRight: { selectedAction = selectedAction.moveRight() },
+                onConfirm: performSelectedAction
+            )
+            .frame(width: 0, height: 0)
+        )
+        .onAppear(perform: resetSelection)
+        .onChange(of: request.id) { _, _ in
+            resetSelection()
+        }
     }
 
     private var sourcePill: some View {
@@ -164,6 +203,7 @@ struct ApprovalInlineView: View {
     }
 
     private func decisionButton(
+        selection: ApprovalSelection,
         title: String,
         systemImage: String,
         titleColor: Color,
@@ -173,7 +213,12 @@ struct ApprovalInlineView: View {
         borderWidth: CGFloat = 0,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let isSelected = selectedAction == selection
+
+        return Button(action: {
+            selectedAction = selection
+            action()
+        }) {
             HStack(alignment: .center, spacing: 4) {
                 Image(systemName: systemImage)
                     .font(.system(size: 11, weight: .semibold))
@@ -189,13 +234,42 @@ struct ApprovalInlineView: View {
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(background)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.white.opacity(isSelected ? 0.10 : 0))
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(border, lineWidth: borderWidth)
+                    .stroke(
+                        isSelected ? Color.white.opacity(0.90) : border,
+                        lineWidth: isSelected ? 1.5 : borderWidth
+                    )
             )
+            .shadow(
+                color: isSelected ? Color.white.opacity(0.24) : .clear,
+                radius: isSelected ? 8 : 0,
+                y: isSelected ? 1 : 0
+            )
+            .scaleEffect(isSelected ? 1.01 : 1)
+            .animation(.easeOut(duration: 0.12), value: isSelected)
         }
         .buttonStyle(.plain)
+    }
+
+    private func resetSelection() {
+        selectedAction = .defaultSelection
+    }
+
+    private func performSelectedAction() {
+        switch selectedAction {
+        case .deny:
+            store.rejectApproval()
+        case .allowOnce:
+            store.acceptApproval()
+        case .alwaysAllow:
+            store.acceptAllApprovals()
+        }
     }
 
     private func diagnosticCallout(_ message: String) -> some View {
@@ -214,5 +288,85 @@ struct ApprovalInlineView: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(Color(red: 0.57, green: 0.83, blue: 1.0).opacity(0.24), lineWidth: 1)
             )
+    }
+}
+
+private struct ApprovalInlineKeyboardBridge: NSViewRepresentable {
+    let requestID: String
+    let onLeft: () -> Void
+    let onRight: () -> Void
+    let onConfirm: () -> Void
+
+    func makeNSView(context: Context) -> ApprovalInlineKeyboardView {
+        let view = ApprovalInlineKeyboardView()
+        view.onLeft = onLeft
+        view.onRight = onRight
+        view.onConfirm = onConfirm
+        view.focusToken = requestID
+        return view
+    }
+
+    func updateNSView(_ nsView: ApprovalInlineKeyboardView, context: Context) {
+        nsView.onLeft = onLeft
+        nsView.onRight = onRight
+        nsView.onConfirm = onConfirm
+
+        if nsView.focusToken != requestID {
+            nsView.focusToken = requestID
+            nsView.scheduleFocus()
+        } else {
+            nsView.scheduleFocusIfNeeded()
+        }
+    }
+}
+
+private final class ApprovalInlineKeyboardView: NSView {
+    var onLeft: (() -> Void)?
+    var onRight: (() -> Void)?
+    var onConfirm: (() -> Void)?
+    var focusToken: String?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        scheduleFocus()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 123:
+            onLeft?()
+        case 124:
+            onRight?()
+        case 36, 76:
+            onConfirm?()
+        default:
+            super.keyDown(with: event)
+        }
+    }
+
+    func scheduleFocus() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else {
+                return
+            }
+
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(self)
+        }
+    }
+
+    func scheduleFocusIfNeeded() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else {
+                return
+            }
+
+            if window.isKeyWindow, window.firstResponder !== self {
+                window.makeFirstResponder(self)
+            }
+        }
     }
 }

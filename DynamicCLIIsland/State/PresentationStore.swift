@@ -6,17 +6,35 @@
 //
 
 import Foundation
+import SwiftUI
 
 @MainActor
 final class PresentationStore: ObservableObject {
     typealias BrandLogo = IslandBrandLogo
     typealias DisplayMode = IslandDisplayMode
 
-    @Published private(set) var displayMode: DisplayMode = .island {
-        didSet {
-            onWindowSizeChange?(windowSize)
+    struct PanelTransitionConfiguration {
+        let windowDuration: TimeInterval
+        let contentDuration: Double
+        let contentVerticalOffset: CGFloat
+
+        var contentAnimation: Animation {
+            .easeInOut(duration: contentDuration)
         }
+
+        static let standard = PanelTransitionConfiguration(
+            windowDuration: 0.24,
+            contentDuration: 0.18,
+            contentVerticalOffset: 8
+        )
     }
+
+    enum WindowResizeAnimation {
+        case none
+        case panelTransition
+    }
+
+    @Published private(set) var displayMode: DisplayMode = .island
     @Published private(set) var selectedLogo: BrandLogo
     @Published private(set) var compactHeight: CGFloat = 37
     @Published private(set) var cameraHousingWidth: CGFloat = 0
@@ -47,6 +65,8 @@ final class PresentationStore: ObservableObject {
     private var currentUsageCardCount = 0
 
     var onWindowSizeChange: ((CGSize) -> Void)?
+    private(set) var windowResizeAnimation: WindowResizeAnimation = .none
+    let panelTransition = PanelTransitionConfiguration.standard
 
     init() {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
@@ -157,10 +177,6 @@ final class PresentationStore: ObservableObject {
             return
         }
 
-        guard currentApprovalRequest == nil else {
-            return
-        }
-
         setDisplayMode(.island)
     }
 
@@ -208,7 +224,7 @@ final class PresentationStore: ObservableObject {
 
         collapsedInlineApprovalID = currentApprovalRequest.id
         suppressRunningGlyphAnimation(for: 0.45)
-        onWindowSizeChange?(windowSize)
+        notifyWindowSizeChange()
     }
 
     func toggleApprovalPreview() {
@@ -229,7 +245,7 @@ final class PresentationStore: ObservableObject {
             return
         }
 
-        onWindowSizeChange?(windowSize)
+        notifyWindowSizeChange()
     }
 
     func syncCameraHousingMetrics(width: CGFloat, height: CGFloat) {
@@ -258,7 +274,7 @@ final class PresentationStore: ObservableObject {
             return
         }
 
-        onWindowSizeChange?(windowSize)
+        notifyWindowSizeChange()
     }
 
     func updateDisplayLayout(isExternal: Bool) {
@@ -267,7 +283,7 @@ final class PresentationStore: ObservableObject {
         }
 
         usesExternalDisplayLayout = isExternal
-        onWindowSizeChange?(windowSize)
+        notifyWindowSizeChange()
     }
 
     func updateCameraHousingWidth(_ width: CGFloat) {
@@ -277,7 +293,7 @@ final class PresentationStore: ObservableObject {
         }
 
         cameraHousingWidth = normalizedWidth
-        onWindowSizeChange?(windowSize)
+        notifyWindowSizeChange()
     }
 
     func updateCameraHousingHeight(_ height: CGFloat) {
@@ -323,6 +339,8 @@ final class PresentationStore: ObservableObject {
             return
         }
 
+        let previousMode = displayMode
+
         panelCollapseTask?.cancel()
         panelCollapseTask = nil
         hasHoveredInsidePanelSinceShown = false
@@ -331,6 +349,7 @@ final class PresentationStore: ObservableObject {
         }
 
         displayMode = mode
+        notifyWindowSizeChange(animation: panelModeTransitionAnimation(from: previousMode, to: mode))
     }
 
     private func scaledWidth(_ width: CGFloat, for mode: DisplayMode) -> CGFloat {
@@ -361,5 +380,20 @@ final class PresentationStore: ObservableObject {
 
             self?.runningGlyphAnimationSuppressed = false
         }
+    }
+
+    private func panelModeTransitionAnimation(from oldMode: DisplayMode, to newMode: DisplayMode) -> WindowResizeAnimation {
+        let modes: Set<DisplayMode> = [oldMode, newMode]
+        if modes == [.island, .panel] {
+            return .panelTransition
+        }
+
+        return .none
+    }
+
+    private func notifyWindowSizeChange(animation: WindowResizeAnimation = .none) {
+        windowResizeAnimation = animation
+        onWindowSizeChange?(windowSize)
+        windowResizeAnimation = .none
     }
 }

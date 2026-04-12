@@ -828,7 +828,9 @@ final class RuntimeStore: ObservableObject {
             sessionID: "preview-approval",
             displayName: "Warp Codex",
             cwd: "/Users/fuyue/Documents/New project",
-            terminalClient: .warp
+            terminalClient: .warp,
+            terminalSessionHint: nil,
+            workspaceHint: "/Users/fuyue/Documents/New project"
         )
 
         return ApprovalRequest(
