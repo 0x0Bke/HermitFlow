@@ -4,6 +4,11 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
+private final class IslandKeyboardWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private enum ScreenPlacementMode: Equatable {
@@ -70,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func createWindow() {
         let size = store.windowSize
-        let window = NSWindow(
+        let window = IslandKeyboardWindow(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless],
             backing: .buffered,
