@@ -91,23 +91,38 @@ final class FocusLauncher {
         if let runningApp = findRunningApplication(matching: descriptors) {
             runningApp.unhide()
             if runningApp.activate(options: [.activateAllWindows, .activateIgnoringOtherApps]) {
+                if routeTerminalWindowIfPossible(for: target) {
+                    return true
+                }
                 return true
             }
 
             if let bundleURL = runningApp.bundleURL {
-                return openApplication(at: bundleURL)
+                let opened = openApplication(at: bundleURL)
+                if opened {
+                    _ = routeTerminalWindowIfPossible(for: target)
+                }
+                return opened
             }
         }
 
         for descriptor in descriptors {
             if let bundleIdentifier = descriptor.bundleIdentifier,
                let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-                return openApplication(at: appURL)
+                let opened = openApplication(at: appURL)
+                if opened {
+                    _ = routeTerminalWindowIfPossible(for: target)
+                }
+                return opened
             }
 
             if let appName = descriptor.appName,
                let fullPath = NSWorkspace.shared.fullPath(forApplication: appName) {
-                return openApplication(at: URL(fileURLWithPath: fullPath))
+                let opened = openApplication(at: URL(fileURLWithPath: fullPath))
+                if opened {
+                    _ = routeTerminalWindowIfPossible(for: target)
+                }
+                return opened
             }
         }
 
@@ -228,6 +243,45 @@ final class FocusLauncher {
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in }
         return true
+    }
+
+    private func routeTerminalWindowIfPossible(for target: FocusTarget) -> Bool {
+        guard target.clientOrigin == .claudeCLI else {
+            return false
+        }
+
+        switch target.terminalClient {
+        case .iTerm:
+            return runAppleScript(arguments: iTermRoutingScriptArguments(for: target)) == "matched"
+        case .warp:
+            return runAppleScript(arguments: warpRoutingScriptArguments(for: target)) == "matched"
+        default:
+            return false
+        }
+    }
+
+    private func runAppleScript(arguments: [String]) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = arguments
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+
+        return String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func findRunningApplication(matching descriptors: [FocusAppDescriptor]) -> NSRunningApplication? {
@@ -442,6 +496,84 @@ final class FocusLauncher {
         }
 
         return "{\(escapedValues.joined(separator: ", "))}"
+    }
+
+    private func iTermRoutingScriptArguments(for target: FocusTarget) -> [String] {
+        let sessionHint = appleScriptOptionalString(target.terminalSessionHint)
+        let workspaceHint = appleScriptOptionalString(target.workspaceHint ?? target.cwd)
+
+        return [
+            "-e", "set sessionHint to \(sessionHint)",
+            "-e", "set workspaceHint to \(workspaceHint)",
+            "-e", "tell application \"iTerm\" to activate",
+            "-e", "tell application \"iTerm\"",
+            "-e", "repeat with currentWindow in windows",
+            "-e", "repeat with currentTab in tabs of currentWindow",
+            "-e", "repeat with currentSession in sessions of currentTab",
+            "-e", "set matched to false",
+            "-e", "if sessionHint is not missing value then",
+            "-e", "try",
+            "-e", "set matched to (id of currentSession as text) is equal to (sessionHint as text)",
+            "-e", "end try",
+            "-e", "end if",
+            "-e", "if matched is false and workspaceHint is not missing value then",
+            "-e", "try",
+            "-e", "set matched to ((name of currentSession as text) contains (workspaceHint as text))",
+            "-e", "end try",
+            "-e", "end if",
+            "-e", "if matched is false and workspaceHint is not missing value then",
+            "-e", "try",
+            "-e", "set matched to ((tty of currentSession as text) contains (workspaceHint as text))",
+            "-e", "end try",
+            "-e", "end if",
+            "-e", "if matched then",
+            "-e", "select currentTab",
+            "-e", "set current window to currentWindow",
+            "-e", "return \"matched\"",
+            "-e", "end if",
+            "-e", "end repeat",
+            "-e", "end repeat",
+            "-e", "end repeat",
+            "-e", "end tell",
+            "-e", "return \"not-found\""
+        ]
+    }
+
+    private func warpRoutingScriptArguments(for target: FocusTarget) -> [String] {
+        let workspaceHint = appleScriptOptionalString(target.workspaceHint ?? target.cwd)
+
+        return [
+            "-e", "set workspaceHint to \(workspaceHint)",
+            "-e", "tell application \"Warp\" to activate",
+            "-e", "if workspaceHint is missing value then return \"not-found\"",
+            "-e", "tell application \"System Events\"",
+            "-e", "if not (exists process \"Warp\") then return \"not-found\"",
+            "-e", "tell process \"Warp\"",
+            "-e", "set frontmost to true",
+            "-e", "repeat with windowRef in windows",
+            "-e", "try",
+            "-e", "set windowName to name of windowRef as text",
+            "-e", "if windowName contains (workspaceHint as text) then",
+            "-e", "perform action \"AXRaise\" of windowRef",
+            "-e", "return \"matched\"",
+            "-e", "end if",
+            "-e", "end try",
+            "-e", "end repeat",
+            "-e", "end tell",
+            "-e", "end tell",
+            "-e", "return \"not-found\""
+        ]
+    }
+
+    private func appleScriptOptionalString(_ value: String?) -> String {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return "missing value"
+        }
+
+        let escaped = trimmed
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     private func clickApprovalElement(in app: NSRunningApplication, matching buttonTitles: [String]) -> AccessibilityClickResult {

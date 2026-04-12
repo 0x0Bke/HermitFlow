@@ -798,7 +798,9 @@ struct LocalCodexSource: @unchecked Sendable {
             sessionID: threadID,
             displayName: focusTargetLabel(for: clientOrigin, terminalClient: terminalClient),
             cwd: resolvedCWD.isEmpty ? nil : resolvedCWD,
-            terminalClient: clientOrigin == .codexCLI ? terminalClient : nil
+            terminalClient: clientOrigin == .codexCLI ? terminalClient : nil,
+            terminalSessionHint: nil,
+            workspaceHint: resolvedCWD.isEmpty ? nil : resolvedCWD
         )
     }
 
@@ -1080,7 +1082,9 @@ struct LocalCodexSource: @unchecked Sendable {
                     sessionID: snapshot.threadID,
                     displayName: focusLabel,
                     cwd: nil,
-                    terminalClient: terminalClient
+                    terminalClient: terminalClient,
+                    terminalSessionHint: nil,
+                    workspaceHint: nil
                 ),
                 freshness: freshness
             )
@@ -1923,6 +1927,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     for: sessionID,
                     cwd: existing?.cwd ?? ""
                 ),
+                terminalClient: existing?.terminalClient,
+                terminalSessionHint: existing?.terminalSessionHint,
                 status: .running,
                 lastEvent: "PermissionRequest",
                 lastActivityAt: .now
@@ -2111,11 +2117,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 continue
             }
 
+            let focusTarget = sessions[approval.sessionID].flatMap(makeClaudeFocusTarget(from:))
+
             return ApprovalRequest(
                 id: approval.id,
                 commandSummary: approval.commandSummary,
                 rationale: approval.rationale,
-                focusTarget: nil,
+                focusTarget: focusTarget,
                 createdAt: approval.createdAt,
                 source: .claude,
                 resolutionKind: .localHTTPHook
@@ -2157,10 +2165,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     for: refreshedSession.rawSessionID,
                     cwd: refreshedSession.cwd
                 ),
+                terminalClient: refreshedSession.terminalClient,
+                terminalSessionHint: refreshedSession.terminalSessionHint,
                 status: refreshedSession.status,
                 lastEvent: refreshedSession.lastEvent,
                 lastActivityAt: refreshedSession.lastActivityAt
             )
+            let focusTarget = makeClaudeFocusTarget(from: summarizedSession)
             return AgentSessionSnapshot(
                 id: "claude:\(summarizedSession.rawSessionID)",
                 origin: .claude,
@@ -2169,10 +2180,27 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 activityState: resolvedStatus.activityState,
                 updatedAt: summarizedSession.lastActivityAt,
                 cwd: summarizedSession.cwd.isEmpty ? nil : summarizedSession.cwd,
-                focusTarget: nil,
+                focusTarget: focusTarget,
                 freshness: .live
             )
         }
+    }
+
+    private func makeClaudeFocusTarget(from session: ClaudeTrackedSession) -> FocusTarget? {
+        guard let terminalClient = session.terminalClient else {
+            return nil
+        }
+
+        let workspaceHint = session.cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        return FocusTarget(
+            clientOrigin: .claudeCLI,
+            sessionID: session.rawSessionID,
+            displayName: "\(terminalClient.displayName) Claude",
+            cwd: workspaceHint.isEmpty ? nil : workspaceHint,
+            terminalClient: terminalClient,
+            terminalSessionHint: session.terminalSessionHint,
+            workspaceHint: workspaceHint.isEmpty ? nil : workspaceHint
+        )
     }
 
     private func mergedClaudeSession(
@@ -2191,6 +2219,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: payload.cwd.isEmpty ? existing.cwd : payload.cwd,
                 source: payload.source.isEmpty ? existing.source : payload.source,
                 conversationSummary: existing.conversationSummary,
+                terminalClient: payload.terminalClient ?? existing.terminalClient,
+                terminalSessionHint: payload.terminalSessionHint ?? existing.terminalSessionHint,
                 status: .idle,
                 lastEvent: existing.lastEvent,
                 lastActivityAt: existing.lastActivityAt
@@ -2207,6 +2237,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: payload.cwd.isEmpty ? existing.cwd : payload.cwd,
                 source: payload.source.isEmpty ? existing.source : payload.source,
                 conversationSummary: existing.conversationSummary,
+                terminalClient: payload.terminalClient ?? existing.terminalClient,
+                terminalSessionHint: payload.terminalSessionHint ?? existing.terminalSessionHint,
                 status: existing.status,
                 lastEvent: existing.lastEvent,
                 lastActivityAt: existing.lastActivityAt
@@ -2221,6 +2253,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 for: payload.sessionID,
                 cwd: payload.cwd.isEmpty ? existing?.cwd ?? "" : payload.cwd
             ),
+            terminalClient: payload.terminalClient ?? existing?.terminalClient,
+            terminalSessionHint: payload.terminalSessionHint ?? existing?.terminalSessionHint,
             status: incomingStatus,
             lastEvent: payload.event,
             lastActivityAt: now
@@ -2630,6 +2664,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     cwd: session.cwd,
                     source: session.source,
                     conversationSummary: session.conversationSummary,
+                    terminalClient: session.terminalClient,
+                    terminalSessionHint: session.terminalSessionHint,
                     status: .idle,
                     lastEvent: "stalled_prompt",
                     lastActivityAt: promptReferenceAt
@@ -2656,6 +2692,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     cwd: session.cwd,
                     source: session.source,
                     conversationSummary: session.conversationSummary,
+                    terminalClient: session.terminalClient,
+                    terminalSessionHint: session.terminalSessionHint,
                     status: .idle,
                     lastEvent: interruptionState.lastEvent,
                     lastActivityAt: interruptionState.at
@@ -2671,6 +2709,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                terminalClient: session.terminalClient,
+                terminalSessionHint: session.terminalSessionHint,
                 status: .idle,
                 lastEvent: interruptionState.lastEvent,
                 lastActivityAt: interruptionState.at
@@ -2695,6 +2735,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                terminalClient: session.terminalClient,
+                terminalSessionHint: session.terminalSessionHint,
                 status: .idle,
                 lastEvent: projectState.lastEvent,
                 lastActivityAt: projectState.at
@@ -2707,6 +2749,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                terminalClient: session.terminalClient,
+                terminalSessionHint: session.terminalSessionHint,
                 status: projectState.status,
                 lastEvent: projectState.lastEvent,
                 lastActivityAt: projectState.at
@@ -2719,6 +2763,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                terminalClient: session.terminalClient,
+                terminalSessionHint: session.terminalSessionHint,
                 status: projectState.status,
                 lastEvent: projectState.lastEvent,
                 lastActivityAt: session.lastActivityAt
@@ -2730,6 +2776,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             cwd: session.cwd,
             source: session.source,
             conversationSummary: session.conversationSummary,
+            terminalClient: session.terminalClient,
+            terminalSessionHint: session.terminalSessionHint,
             status: session.status,
             lastEvent: session.lastEvent,
             lastActivityAt: session.lastActivityAt
@@ -3015,7 +3063,9 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             state: EVENT_TO_STATE[event],
             session_id: payload.session_id || "default",
             cwd: payload.cwd || "",
-            source: payload.source || payload.reason || ""
+            source: payload.source || payload.reason || "",
+            terminal_client: detectTerminalClient(),
+            terminal_session_hint: detectTerminalSessionHint()
           });
 
           const req = http.request({
@@ -3167,6 +3217,39 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
         function clamp(value, min, max) {
           return Math.min(Math.max(value, min), max);
+        }
+
+        function detectTerminalClient() {
+          const env = process.env;
+          const termProgram = typeof env.TERM_PROGRAM === "string" ? env.TERM_PROGRAM.trim() : "";
+
+          if (termProgram === "WarpTerminal" || env.WARP_IS_LOCAL_SHELL_SESSION === "1") return "warp";
+          if (termProgram === "iTerm.app" || typeof env.ITERM_SESSION_ID === "string") return "iTerm";
+          if (termProgram === "Apple_Terminal" || typeof env.TERM_SESSION_ID === "string") return "terminal";
+          if (termProgram === "WezTerm" || typeof env.WEZTERM_EXECUTABLE === "string") return "wezTerm";
+          if (termProgram === "ghostty" || typeof env.GHOSTTY_RESOURCES_DIR === "string") return "ghostty";
+          if (termProgram === "Alacritty" || typeof env.ALACRITTY_SOCKET === "string") return "alacritty";
+
+          return "";
+        }
+
+        function detectTerminalSessionHint() {
+          const env = process.env;
+          const candidates = [
+            env.ITERM_SESSION_ID,
+            env.TERM_SESSION_ID,
+            env.WEZTERM_PANE,
+            env.WARP_SESSION_ID,
+            env.GHOSTTY_SESSION_ID
+          ];
+
+          for (const candidate of candidates) {
+            if (typeof candidate === "string" && candidate.trim().length > 0) {
+              return candidate.trim();
+            }
+          }
+
+          return "";
         }
         """
         try content.write(to: scriptURL, atomically: true, encoding: .utf8)
@@ -3704,6 +3787,8 @@ private struct ClaudeTrackedSession {
     let cwd: String
     let source: String
     let conversationSummary: String?
+    let terminalClient: TerminalClient?
+    let terminalSessionHint: String?
     let status: Status
     let lastEvent: String
     let lastActivityAt: Date
@@ -3800,6 +3885,8 @@ private struct ClaudeHookEventPayload: Decodable {
     let sessionID: String
     let cwd: String
     let source: String
+    let terminalClient: TerminalClient?
+    let terminalSessionHint: String?
 
     private enum CodingKeys: String, CodingKey {
         case event
@@ -3807,6 +3894,8 @@ private struct ClaudeHookEventPayload: Decodable {
         case sessionID = "session_id"
         case cwd
         case source
+        case terminalClient = "terminal_client"
+        case terminalSessionHint = "terminal_session_hint"
     }
 }
 

@@ -440,7 +440,7 @@ private extension IslandRootView {
                 Spacer(minLength: 8)
 
                 if let focusTarget = session.focusTarget {
-                    focusArrowButton {
+                    focusArrowButton(helpText: "Open \(focusTarget.displayName)") {
                         store.bringForward(focusTarget)
                     }
                 }
@@ -542,7 +542,7 @@ private extension IslandRootView {
         )
     }
 
-    func focusArrowButton(action: @escaping () -> Void) -> some View {
+    func focusArrowButton(helpText: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: "arrow.up.right")
                 .font(.system(size: 10, weight: .semibold))
@@ -550,6 +550,7 @@ private extension IslandRootView {
                 .frame(width: 18, height: 18)
         }
         .buttonStyle(.plain)
+        .help(helpText ?? "Bring forward")
     }
 
     func panelActionButton(title: String, action: @escaping () -> Void) -> some View {
