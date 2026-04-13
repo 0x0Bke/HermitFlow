@@ -122,7 +122,8 @@ struct IslandRootView: View {
             sessionTitle: approvalSessionTitle(for: request),
             primaryTitle: approvalPrimaryTitle(for: request),
             timestampText: relativeTimestamp(for: request.createdAt),
-            diagnosticMessage: store.approvalDiagnosticMessage
+            diagnosticMessage: store.approvalDiagnosticMessage,
+            defaultFocus: store.approvalDefaultFocus
         )
     }
 

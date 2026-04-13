@@ -160,6 +160,8 @@ private struct SettingsPanelView: View {
     let screenOptions: () -> [ScreenOption]
     let claudeSettingsJSONText: () -> String
     let onClaudeSettingsJSONSubmit: (String) -> Void
+    let approvalDefaultFocus: () -> ApprovalDefaultFocusOption
+    let onApprovalDefaultFocusSelected: (ApprovalDefaultFocusOption) -> Void
     let providerAuthRows: () -> [ProviderAuthEnvKeyRow]
     let providerAuthRefreshToken: () -> Int
     let onProviderAuthEnvKeySubmit: (String, String) -> Void
@@ -203,6 +205,19 @@ private struct SettingsPanelView: View {
                     }
                     .menuStyle(.borderlessButton)
                 }
+            }
+
+            settingsTile(title: "approval-focus") {
+                Menu {
+                    ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
+                        Button(option.menuTitle) {
+                            onApprovalDefaultFocusSelected(option)
+                        }
+                    }
+                } label: {
+                    pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 118)
+                }
+                .menuStyle(.borderlessButton)
             }
 
             settingsTile(title: "usage-auth", minHeight: 176) {
@@ -569,6 +584,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             },
             onClaudeSettingsJSONSubmit: { [weak self] value in
                 self?.updateClaudeSettingsJSON(from: value)
+            },
+            approvalDefaultFocus: { [weak self] in
+                self?.store.approvalDefaultFocus ?? .accept
+            },
+            onApprovalDefaultFocusSelected: { [weak self] option in
+                self?.store.setApprovalDefaultFocus(option)
             },
             providerAuthRows: { [weak self] in
                 self?.claudeProviderAuthRows ?? []

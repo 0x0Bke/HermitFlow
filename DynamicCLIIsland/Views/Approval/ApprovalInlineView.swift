@@ -13,8 +13,6 @@ private enum ApprovalSelection: Int, CaseIterable {
     case allowOnce
     case alwaysAllow
 
-    static let defaultSelection: ApprovalSelection = .allowOnce
-
     func moveLeft() -> ApprovalSelection {
         ApprovalSelection(rawValue: max(rawValue - 1, 0)) ?? self
     }
@@ -32,8 +30,9 @@ struct ApprovalInlineView: View {
     let primaryTitle: String
     let timestampText: String
     let diagnosticMessage: String?
+    let defaultFocus: ApprovalDefaultFocusOption
 
-    @State private var selectedAction: ApprovalSelection = .defaultSelection
+    @State private var selectedAction: ApprovalSelection = .allowOnce
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -188,6 +187,9 @@ struct ApprovalInlineView: View {
         .onChange(of: request.id) { _, _ in
             resetSelection()
         }
+        .onChange(of: defaultFocus) { _, _ in
+            resetSelection()
+        }
     }
 
     private var sourcePill: some View {
@@ -258,7 +260,12 @@ struct ApprovalInlineView: View {
     }
 
     private func resetSelection() {
-        selectedAction = .defaultSelection
+        selectedAction = switch defaultFocus {
+        case .accept:
+            .allowOnce
+        case .acceptAll:
+            .alwaysAllow
+        }
     }
 
     private func performSelectedAction() {

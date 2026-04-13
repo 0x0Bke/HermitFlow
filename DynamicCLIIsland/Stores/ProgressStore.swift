@@ -72,6 +72,7 @@ final class ProgressStore: ObservableObject {
     var approvalRequest: ApprovalRequest? { appStore.approvalRequest }
     var approvalDiagnosticMessage: String? { appStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { appStore.approvalPreviewEnabled }
+    var approvalDefaultFocus: ApprovalDefaultFocusOption { appStore.approvalDefaultFocus }
     var collapsedInlineApprovalID: String? { appStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { appStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { appStore.accessibilityPromptDismissed }
@@ -159,6 +160,10 @@ final class ProgressStore: ObservableObject {
 
     func toggleSoundMuted() {
         appStore.toggleSoundMuted()
+    }
+
+    func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
+        appStore.setApprovalDefaultFocus(option)
     }
 
     func openSettingsPanel() {
