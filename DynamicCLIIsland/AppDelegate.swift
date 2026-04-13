@@ -489,11 +489,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var codexMonoLogoMenuItem: NSMenuItem?
     private var openAILogoMenuItem: NSMenuItem?
     private var resyncClaudeHooksMenuItem: NSMenuItem?
+    private var checkForUpdatesMenuItem: NSMenuItem?
     private var approvalPreviewMenuItem: NSMenuItem?
     private let screenPlacementModeDefaultsKey = "HermitFlow.screenPlacementMode"
     private let fixedScreenIDDefaultsKey = "HermitFlow.fixedScreenID"
     private let debugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
+    private let updateChecker = GitHubReleaseUpdateChecker()
+    private let updateDownloader = GitHubReleaseAssetDownloader()
     private var mainWindowWasVisibleBeforeSettings = false
+    private var isCheckingForUpdates = false
+    private var isDownloadingUpdate = false
 
     private var windowCoordinator: IslandWindowCoordinator { environment.windowCoordinator }
     private var windowSizingCoordinator: WindowSizingCoordinator { environment.windowSizingCoordinator }
@@ -827,6 +832,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         menu.addItem(.separator())
 
+        let checkForUpdatesMenuItem = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkForUpdatesMenuItem.target = self
+        menu.addItem(checkForUpdatesMenuItem)
+
+        menu.addItem(.separator())
+
 //        审批状态测试入口
 //        let approvalPreviewMenuItem = NSMenuItem(
 //            title: "Preview Approval UI",
@@ -866,6 +881,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         self.codexMonoLogoMenuItem = codexMonoLogoMenuItem
         self.openAILogoMenuItem = openAILogoMenuItem
         self.resyncClaudeHooksMenuItem = resyncClaudeHooksMenuItem
+        self.checkForUpdatesMenuItem = checkForUpdatesMenuItem
 //        审批状态测试入口
 //        self.approvalPreviewMenuItem = approvalPreviewMenuItem
         rebuildScreenMenu()
@@ -1188,6 +1204,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func updateMenuState() {
         visibilityMenuItem?.title = "Show/Hide Island"
+        if isDownloadingUpdate {
+            checkForUpdatesMenuItem?.title = "Downloading Update…"
+        } else if isCheckingForUpdates {
+            checkForUpdatesMenuItem?.title = "Checking for Updates…"
+        } else {
+            checkForUpdatesMenuItem?.title = "Check for Updates…"
+        }
+        checkForUpdatesMenuItem?.isEnabled = !isCheckingForUpdates && !isDownloadingUpdate
         automaticScreenMenuItem?.state = screenPlacementMode == .automatic ? .on : .off
         for item in fixedScreenMenuItems {
             guard let representedDisplayID = item.representedObject as? NSNumber else {
@@ -1663,6 +1687,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc
+    private func checkForUpdates() {
+        guard !isCheckingForUpdates, !isDownloadingUpdate else {
+            return
+        }
+
+        isCheckingForUpdates = true
+        updateMenuState()
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            defer {
+                isCheckingForUpdates = false
+                updateMenuState()
+            }
+
+            do {
+                let result = try await updateChecker.checkForUpdates()
+                presentUpdateCheckAlert(for: result)
+            } catch {
+                presentUpdateCheckFailureAlert(error: error)
+            }
+        }
+    }
+
+    @objc
     private func quitFromMenu() {
         store.quitApp()
     }
@@ -1754,6 +1806,104 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func menuNeedsUpdate(_ menu: NSMenu) {
         rebuildScreenMenu()
         updateMenuState()
+    }
+
+    private func presentUpdateCheckAlert(for result: GitHubReleaseUpdateChecker.Result) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+
+        if result.isUpdateAvailable {
+            alert.messageText = "Update Available"
+            alert.informativeText = "Version \(result.latestVersion) is available. You are currently on \(result.currentVersion)."
+
+            if result.preferredAssetURL != nil {
+                alert.addButton(withTitle: "Download and Install")
+            }
+            alert.addButton(withTitle: "View Release")
+            alert.addButton(withTitle: "Cancel")
+        } else {
+            alert.messageText = "HermitFlow Is Up To Date"
+            alert.informativeText = "Current version: \(result.currentVersion)\nLatest version: \(result.latestVersion)"
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "View Release")
+        }
+
+        let response = alert.runModal()
+        if result.isUpdateAvailable {
+            if result.preferredAssetURL != nil, response == .alertFirstButtonReturn {
+                if let preferredAssetURL = result.preferredAssetURL {
+                    downloadAndInstallUpdate(from: preferredAssetURL)
+                }
+                return
+            }
+
+            let releaseButtonReturn: NSApplication.ModalResponse = result.preferredAssetURL != nil
+                ? .alertSecondButtonReturn
+                : .alertFirstButtonReturn
+            if response == releaseButtonReturn {
+                NSWorkspace.shared.open(result.releasePageURL)
+            }
+            return
+        }
+
+        if response == .alertSecondButtonReturn {
+            NSWorkspace.shared.open(result.releasePageURL)
+        }
+    }
+
+    private func presentUpdateCheckFailureAlert(error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Failed to Check for Updates"
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func downloadAndInstallUpdate(from remoteURL: URL) {
+        guard !isDownloadingUpdate else {
+            return
+        }
+
+        isDownloadingUpdate = true
+        updateMenuState()
+
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            defer {
+                isDownloadingUpdate = false
+                updateMenuState()
+            }
+
+            do {
+                let localURL = try await updateDownloader.downloadAsset(from: remoteURL)
+                updateDownloader.openDownloadedAsset(at: localURL)
+                presentDownloadStartedAlert(localURL: localURL)
+            } catch {
+                presentDownloadFailureAlert(error: error)
+            }
+        }
+    }
+
+    private func presentDownloadStartedAlert(localURL: URL) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Installer Ready"
+        alert.informativeText = "The update package was downloaded and opened.\n\nLocal file: \(localURL.path)"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func presentDownloadFailureAlert(error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Failed to Download Update"
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 

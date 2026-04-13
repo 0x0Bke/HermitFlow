@@ -92,7 +92,9 @@
 			A10000000000000000000122 /* CodexSessionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000123 /* CodexSessionReader.swift */; };
 			A10000000000000000000124 /* CodexLogReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000125 /* CodexLogReader.swift */; };
 			A10000000000000000000126 /* CodexHookSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000127 /* CodexHookSource.swift */; };
-			A10000000000000000000128 /* DiagnosticsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000129 /* DiagnosticsCardView.swift */; };
+		A10000000000000000000128 /* DiagnosticsCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000129 /* DiagnosticsCardView.swift */; };
+		A1000000000000000000012E /* GitHubReleaseUpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000012D /* GitHubReleaseUpdateChecker.swift */; };
+		A10000000000000000000130 /* GitHubReleaseAssetDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000012F /* GitHubReleaseAssetDownloader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -184,6 +186,8 @@
 			A10000000000000000000125 /* CodexLogReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLogReader.swift; sourceTree = "<group>"; };
 			A10000000000000000000127 /* CodexHookSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexHookSource.swift; sourceTree = "<group>"; };
 			A10000000000000000000129 /* DiagnosticsCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsCardView.swift; sourceTree = "<group>"; };
+			A1000000000000000000012D /* GitHubReleaseUpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubReleaseUpdateChecker.swift; sourceTree = "<group>"; };
+			A1000000000000000000012F /* GitHubReleaseAssetDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubReleaseAssetDownloader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -298,6 +302,8 @@
 				children = (
 					A100000000000000000000F0 /* Approval */,
 					A1000000000000000000012B /* Diagnostics */,
+					A1000000000000000000012F /* GitHubReleaseAssetDownloader.swift */,
+					A1000000000000000000012D /* GitHubReleaseUpdateChecker.swift */,
 					A1000000000000000000010D /* Usage */,
 					A10000000000000000000026 /* AccessibilityPermissionMonitor.swift */,
 					A10000000000000000000024 /* FocusLauncher.swift */,
@@ -717,6 +723,8 @@
 				A10000000000000000000124 /* CodexLogReader.swift in Sources */,
 				A10000000000000000000126 /* CodexHookSource.swift in Sources */,
 				A10000000000000000000128 /* DiagnosticsCardView.swift in Sources */,
+				A10000000000000000000130 /* GitHubReleaseAssetDownloader.swift in Sources */,
+				A1000000000000000000012E /* GitHubReleaseUpdateChecker.swift in Sources */,
 				);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
