@@ -3698,36 +3698,104 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
     private func resolvedNodeBinaryPathIfAvailable() -> String? {
         let fileManager = FileManager.default
-        let candidates = [
+        let homeDirectory = NSHomeDirectory()
+        var candidates = [
             "/opt/homebrew/bin/node",
             "/usr/local/bin/node",
             "/usr/bin/node"
         ]
 
+        candidates.append(contentsOf: [
+            "\(homeDirectory)/.volta/bin/node",
+            "\(homeDirectory)/.asdf/shims/node",
+            "\(homeDirectory)/.local/bin/node",
+            "\(homeDirectory)/.local/share/mise/shims/node",
+            "\(homeDirectory)/.mise/shims/node"
+        ])
+        candidates.append(contentsOf: nodeVersionManagerCandidates(homeDirectory: homeDirectory))
+
         for candidate in candidates where fileManager.isExecutableFile(atPath: candidate) {
             return candidate
         }
 
+        if let path = runCommandAndCaptureOutput(
+            executablePath: "/usr/bin/which",
+            arguments: ["node"]
+        ), fileManager.isExecutableFile(atPath: path) {
+            return path
+        }
+
+        for shellPath in ["/bin/zsh", "/bin/bash"] {
+            if let path = runCommandAndCaptureOutput(
+                executablePath: shellPath,
+                arguments: ["-lic", "command -v node"]
+            ), fileManager.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        return nil
+    }
+
+    private func nodeVersionManagerCandidates(homeDirectory: String) -> [String] {
+        var candidates: [String] = []
+        candidates.append(contentsOf: nodeInstallCandidates(
+            inDirectory: "\(homeDirectory)/.nvm/versions/node",
+            suffix: "bin/node"
+        ))
+        candidates.append(contentsOf: nodeInstallCandidates(
+            inDirectory: "\(homeDirectory)/.fnm/node-versions",
+            suffix: "installation/bin/node"
+        ))
+        candidates.append(contentsOf: nodeInstallCandidates(
+            inDirectory: "\(homeDirectory)/.asdf/installs/nodejs",
+            suffix: "bin/node"
+        ))
+        return candidates.sorted(by: >)
+    }
+
+    private func nodeInstallCandidates(inDirectory directoryPath: String, suffix: String) -> [String] {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            atPath: directoryPath
+        ) else {
+            return []
+        }
+
+        return entries.map { entry in
+            URL(fileURLWithPath: directoryPath)
+                .appendingPathComponent(entry)
+                .appendingPathComponent(suffix)
+                .path
+        }
+    }
+
+    private func runCommandAndCaptureOutput(executablePath: String, arguments: [String]) -> String? {
         let process = Process()
         let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["node"]
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = arguments
         process.standardOutput = output
         process.standardError = Pipe()
 
         do {
             try process.run()
             process.waitUntilExit()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            if process.terminationStatus == 0,
-               let path = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-               !path.isEmpty {
-                return path
-            }
-        } catch {}
+        } catch {
+            return nil
+        }
 
-        return nil
+        guard process.terminationStatus == 0 else {
+            return nil
+        }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let path = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !path.isEmpty else {
+            return nil
+        }
+
+        return path
     }
 
     private func describeClaudeHookConfigurationError(_ error: Error) -> String {
