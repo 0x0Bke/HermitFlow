@@ -876,8 +876,9 @@ enum ClaudeUsageLoader {
             return nil
         }
 
+        let hadPercentSuffix = trimmed.hasSuffix("%")
         let normalizedInput: String
-        if trimmed.hasSuffix("%") {
+        if hadPercentSuffix {
             normalizedInput = String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
             normalizedInput = trimmed
@@ -885,6 +886,10 @@ enum ClaudeUsageLoader {
 
         guard let rawValue = Double(normalizedInput) else {
             return nil
+        }
+
+        if hadPercentSuffix {
+            return min(max(rawValue / 100, 0), 1)
         }
 
         if rawValue > 1 {
