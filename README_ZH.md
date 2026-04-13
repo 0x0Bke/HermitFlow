@@ -296,6 +296,7 @@ provider 查询配置文件位于：
 - Claude 额度依赖本地 Claude payload 的字段形状；某些第三方 Anthropic 兼容 provider 不会暴露 `5h` / `7d` rate limit 窗口
 - Claude Code 集成依赖本地 hook 机制和 `node`
 - Codex 自动审批依赖辅助功能权限以及终端前台控制能力
+- 如果其他电脑已经装了 Node，但 HermitFlow 仍提示 `Node.js is unavailable for the managed Claude hook script`，通常是因为应用从 Finder / LaunchServices 启动时拿到的 `PATH` 不包含 `nvm`、`fnm`、`asdf`、`Volta` 或 `mise` 注入的路径。新版本会主动探测这些常见安装位置并回退到登录 shell；旧版本可先把 `node` 暴露到稳定路径，例如 `/opt/homebrew/bin/node`、`/usr/local/bin/node` 或 `~/.volta/bin/node`，然后执行一次 `Resync Claude Hooks`。
 - 如果 CLI 会话已经退出、窗口已关闭，部分“回到会话”入口可能不可用
 - 如果目标 Claude 配置文件本身不是合法 JSON 对象，HermitFlow 不会强行覆盖该文件
 

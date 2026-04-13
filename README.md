@@ -296,6 +296,7 @@ To build a `Debug` package:
 - Claude usage depends on the local Claude payload shape; some third-party Anthropic-compatible providers do not expose `5h` / `7d` rate-limit windows
 - Claude Code integration depends on local hook support and `node`
 - Codex auto-approval depends on Accessibility permission and terminal foreground control
+- If another machine already has Node installed but HermitFlow still reports `Node.js is unavailable for the managed Claude hook script`, the usual cause is that apps launched from Finder / LaunchServices do not inherit the shell `PATH` entries added by `nvm`, `fnm`, `asdf`, `Volta`, or `mise`. Newer builds now probe those common install locations and fall back to a login shell lookup; on older builds, expose `node` from a stable path such as `/opt/homebrew/bin/node`, `/usr/local/bin/node`, or `~/.volta/bin/node`, then run `Resync Claude Hooks` once.
 - If a CLI session has already exited or its window is gone, some focus targets may no longer work
 - If a target Claude settings file is not a valid top-level JSON object, HermitFlow will not overwrite it
 
