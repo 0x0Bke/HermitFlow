@@ -15,6 +15,66 @@ private final class IslandHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+private struct PlainJSONEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.smartInsertDeleteEnabled = false
+        textView.allowsUndo = true
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
+        textView.textColor = .white
+        textView.insertionPointColor = .white
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.string = text
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView, textView.string != text else {
+            return
+        }
+        textView.string = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else {
+                return
+            }
+            text = textView.string
+        }
+    }
+}
+
 private struct SettingsPanelView: View {
     struct ScreenOption: Identifiable {
         let id: String
@@ -25,80 +85,134 @@ private struct SettingsPanelView: View {
     @ObservedObject var store: ProgressStore
     let currentScreenTitle: () -> String
     let screenOptions: () -> [ScreenOption]
+    let claudeSettingsJSONText: () -> String
+    let onClaudeSettingsJSONSubmit: (String) -> Void
+    @State private var claudeSettingsInput = ""
+    @State private var claudeSettingsLastSubmitted = ""
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            settingsTile(title: "Sound") {
-                Toggle("", isOn: soundMutedBinding)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .scaleEffect(0.76)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                settingsTile(title: "Sound") {
+                    Toggle("", isOn: soundMutedBinding)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .scaleEffect(0.72)
+                }
+
+                settingsTile(title: "Screen") {
+                    Menu {
+                        ForEach(screenOptions()) { option in
+                            Button(option.title) {
+                                option.action()
+                            }
+                        }
+                    } label: {
+                        pickerCapsule(title: currentScreenTitle(), width: 148)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+
+                settingsTile(title: "Logo") {
+                    Menu {
+                        ForEach(availableLogos, id: \.rawValue) { logo in
+                            Button(logo.menuTitle) {
+                                store.selectLogo(logo)
+                            }
+                        }
+                    } label: {
+                        pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
             }
 
-            settingsTile(title: "Screen") {
-                Menu {
-                    ForEach(screenOptions()) { option in
-                        Button(option.title) {
-                            option.action()
-                        }
+            settingsTile(title: "cc-paths", minHeight: 176) {
+                ZStack(alignment: .topLeading) {
+                    if claudeSettingsInput.isEmpty {
+                        Text("{\n  \"paths\": []\n}")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.22))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
                     }
-                } label: {
-                    pickerCapsule(title: currentScreenTitle(), width: 148)
-                }
-                .menuStyle(.borderlessButton)
-            }
 
-            settingsTile(title: "Logo") {
-                Menu {
-                    ForEach(availableLogos, id: \.rawValue) { logo in
-                        Button(logo.menuTitle) {
-                            store.selectLogo(logo)
+                    PlainJSONEditor(text: $claudeSettingsInput)
+                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                        .onChange(of: claudeSettingsInput) { _, _ in
+                            scheduleClaudeSettingsSubmit()
                         }
-                    }
-                } label: {
-                    pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
                 }
-                .menuStyle(.borderlessButton)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
             }
         }
-        .padding(16)
-        .frame(width: 640, alignment: .leading)
+        .onAppear {
+            claudeSettingsInput = claudeSettingsJSONText()
+            claudeSettingsLastSubmitted = claudeSettingsInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .onDisappear {
+            submitClaudeSettings()
+        }
+        .padding(14)
+        .frame(width: 780, alignment: .leading)
         .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.10, green: 0.11, blue: 0.13),
-                    Color(red: 0.05, green: 0.06, blue: 0.08)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack {
+                Color(red: 0.055, green: 0.058, blue: 0.068)
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.03),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
         )
     }
 
     private func settingsTile<Accessory: View>(
         title: String,
+        minHeight: CGFloat = 62,
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.94))
                 .lineLimit(1)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 10)
 
             accessory()
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.05))
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.05),
+                            Color.white.opacity(0.025)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
     }
 
     private func pickerCapsule(title: String, width: CGFloat) -> some View {
@@ -108,16 +222,16 @@ private struct SettingsPanelView: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(width: width, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.12))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var soundMutedBinding: Binding<Bool> {
@@ -133,6 +247,27 @@ private struct SettingsPanelView: View {
 
     private var availableLogos: [IslandBrandLogo] {
         [.hermit, .clawd, .zenmux, .claudeCodeColor, .codexColor, .codexMono, .openAI]
+    }
+
+    private func submitClaudeSettings() {
+        let normalizedInput = claudeSettingsInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedInput != claudeSettingsLastSubmitted else {
+            return
+        }
+        claudeSettingsLastSubmitted = normalizedInput
+        if normalizedInput != claudeSettingsJSONText().trimmingCharacters(in: .whitespacesAndNewlines) {
+            onClaudeSettingsJSONSubmit(normalizedInput)
+        }
+    }
+
+    private func scheduleClaudeSettingsSubmit() {
+        let snapshot = claudeSettingsInput
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard snapshot == claudeSettingsInput else {
+                return
+            }
+            submitClaudeSettings()
+        }
     }
 }
 
@@ -273,10 +408,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NSApp.setActivationPolicy(.regular)
         keepIslandVisibleForSettings()
 
+        let rootView = makeSettingsPanelView()
+
         if let settingsPanel {
             if settingsPanel.isMiniaturized {
                 settingsPanel.deminiaturize(nil)
             }
+            settingsPanel.contentView = NSHostingView(rootView: rootView)
             settingsPanel.makeKeyAndOrderFront(nil)
             keepIslandVisibleForSettings()
             NSApp.activate(ignoringOtherApps: true)
@@ -284,7 +422,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 224),
+            contentRect: NSRect(x: 0, y: 0, width: 812, height: 244),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -300,21 +438,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.delegate = self
 
-        let rootView = SettingsPanelView(
-            store: store,
-            currentScreenTitle: { [weak self] in
-                self?.currentScreenSelectionTitle ?? "Auto"
-            },
-            screenOptions: { [weak self] in
-                self?.settingsScreenOptions ?? []
-            }
-        )
         panel.contentView = NSHostingView(rootView: rootView)
         positionSettingsPanel(panel)
         panel.makeKeyAndOrderFront(nil)
         keepIslandVisibleForSettings()
         NSApp.activate(ignoringOtherApps: true)
         settingsPanel = panel
+    }
+
+    private func makeSettingsPanelView() -> SettingsPanelView {
+        SettingsPanelView(
+            store: store,
+            currentScreenTitle: { [weak self] in
+                self?.currentScreenSelectionTitle ?? "Auto"
+            },
+            screenOptions: { [weak self] in
+                self?.settingsScreenOptions ?? []
+            },
+            claudeSettingsJSONText: { [weak self] in
+                self?.claudeSettingsJSONText ?? ""
+            },
+            onClaudeSettingsJSONSubmit: { [weak self] value in
+                self?.updateClaudeSettingsJSON(from: value)
+            }
+        )
     }
 
     private func closeSettingsPanel() {
@@ -974,6 +1121,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         })
 
         return options
+    }
+
+    private var claudeSettingsJSONText: String {
+        loadClaudeSettingsJSONText()
+    }
+
+    private func updateClaudeSettingsJSON(from rawInput: String) {
+        do {
+            try FileManager.default.createDirectory(
+                at: FilePaths.hermitFlowHome,
+                withIntermediateDirectories: true
+            )
+            let normalizedInput = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = normalizedInput.isEmpty ? "{\n  \"paths\": []\n}\n" : normalizedInput + "\n"
+            let data = Data(text.utf8)
+            try data.write(to: FilePaths.claudeSettingsPaths, options: .atomic)
+            store.objectWillChange.send()
+            store.resyncClaudeHooks()
+        } catch {
+            debugLog("Failed to write Claude settings JSON: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadClaudeSettingsJSONText() -> String {
+        guard FileManager.default.fileExists(atPath: FilePaths.claudeSettingsPaths.path) else {
+            return "{\n  \"paths\": []\n}"
+        }
+
+        do {
+            let data = try Data(contentsOf: FilePaths.claudeSettingsPaths)
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            debugLog("Failed to load Claude settings JSON: \(error.localizedDescription)")
+            return "{\n  \"paths\": []\n}"
+        }
     }
 
     private var isWindowVisible: Bool {
