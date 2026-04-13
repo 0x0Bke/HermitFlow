@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import CoreGraphics
+import Darwin
 import Foundation
 import SwiftUI
 
@@ -15,8 +16,449 @@ private final class IslandHostingView<Content: View>: NSHostingView<Content> {
     }
 }
 
+private struct PlainJSONEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView()
+        textView.delegate = context.coordinator
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
+        textView.smartInsertDeleteEnabled = false
+        textView.allowsUndo = true
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .medium)
+        textView.textColor = .white
+        textView.insertionPointColor = .white
+        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.string = text
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView, textView.string != text else {
+            return
+        }
+        textView.string = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        @Binding private var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else {
+                return
+            }
+            text = textView.string
+        }
+    }
+}
+
+private struct ProviderAuthEnvKeyRow: Identifiable, Equatable {
+    let id: String
+    let authEnvKey: String
+}
+
+private struct ProviderAuthEnvKeyFieldRow: View {
+    let row: ProviderAuthEnvKeyRow
+    let refreshToken: Int
+    let onSubmit: (String, String) -> Void
+
+    @State private var input = ""
+    @State private var lastSubmitted = ""
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(row.id)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.82))
+                .frame(width: 112, alignment: .leading)
+
+            TextField("ANTHROPIC_AUTH_TOKEN", text: $input)
+                .textFieldStyle(.roundedBorder)
+        }
+        .onAppear {
+            syncFromRow(force: true)
+        }
+        .onChange(of: input) { _, _ in
+            scheduleSubmit()
+        }
+        .onChange(of: row.authEnvKey) { _, _ in
+            syncFromRow(force: false)
+        }
+        .onChange(of: refreshToken) { _, _ in
+            syncFromRow(force: false)
+        }
+        .onDisappear {
+            submit()
+        }
+    }
+
+    private func syncFromRow(force: Bool) {
+        let normalizedValue = normalized(row.authEnvKey)
+        if force || normalized(input) == lastSubmitted {
+            input = normalizedValue
+            lastSubmitted = normalizedValue
+        }
+    }
+
+    private func scheduleSubmit() {
+        let snapshot = input
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard snapshot == input else {
+                return
+            }
+            submit()
+        }
+    }
+
+    private func submit() {
+        let normalizedInput = normalized(input)
+        guard normalizedInput != lastSubmitted else {
+            return
+        }
+        lastSubmitted = normalizedInput
+        onSubmit(row.id, normalizedInput)
+    }
+
+    private func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct SettingsPanelView: View {
+    struct ScreenOption: Identifiable {
+        let id: String
+        let title: String
+        let action: () -> Void
+    }
+
+    @ObservedObject var store: ProgressStore
+    let currentScreenTitle: () -> String
+    let screenOptions: () -> [ScreenOption]
+    let claudeUsageCommandJSONText: () -> String
+    let onClaudeUsageCommandJSONSubmit: (String) -> Void
+    let claudeSettingsJSONText: () -> String
+    let onClaudeSettingsJSONSubmit: (String) -> Void
+    let approvalDefaultFocus: () -> ApprovalDefaultFocusOption
+    let onApprovalDefaultFocusSelected: (ApprovalDefaultFocusOption) -> Void
+    let providerAuthRows: () -> [ProviderAuthEnvKeyRow]
+    let providerAuthRefreshToken: () -> Int
+    let onProviderAuthEnvKeySubmit: (String, String) -> Void
+    @State private var claudeUsageCommandInput = ""
+    @State private var claudeUsageCommandLastSubmitted = ""
+    @State private var claudeSettingsInput = ""
+    @State private var claudeSettingsLastSubmitted = ""
+
+    var body: some View {
+        let authRows = providerAuthRows()
+
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                settingsTile(title: "Sound") {
+                    Toggle("", isOn: soundMutedBinding)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .scaleEffect(0.72)
+                }
+
+                settingsTile(title: "Screen") {
+                    Menu {
+                        ForEach(screenOptions()) { option in
+                            Button(option.title) {
+                                option.action()
+                            }
+                        }
+                    } label: {
+                        pickerCapsule(title: currentScreenTitle(), width: 148)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+
+                settingsTile(title: "Logo") {
+                    Menu {
+                        ForEach(availableLogos, id: \.rawValue) { logo in
+                            Button(logo.menuTitle) {
+                                store.selectLogo(logo)
+                            }
+                        }
+                    } label: {
+                        pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
+                    }
+                    .menuStyle(.borderlessButton)
+                }
+            }
+
+            settingsTile(title: "approval-focus") {
+                Menu {
+                    ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
+                        Button(option.menuTitle) {
+                            onApprovalDefaultFocusSelected(option)
+                        }
+                    }
+                } label: {
+                    pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 118)
+                }
+                .menuStyle(.borderlessButton)
+            }
+
+            settingsTile(title: "usage-auth", minHeight: 176) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(authRows) { row in
+                            ProviderAuthEnvKeyFieldRow(
+                                row: row,
+                                refreshToken: providerAuthRefreshToken(),
+                                onSubmit: onProviderAuthEnvKeySubmit
+                            )
+                        }
+                    }
+                    .padding(12)
+                }
+                .frame(maxWidth: .infinity, minHeight: 148, maxHeight: 188, alignment: .topLeading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+            }
+
+            settingsTile(title: "usage-cmd", minHeight: 176) {
+                ZStack(alignment: .topLeading) {
+                    if claudeUsageCommandInput.isEmpty {
+                        Text("{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.22))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                    }
+
+                    PlainJSONEditor(text: $claudeUsageCommandInput)
+                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                        .onChange(of: claudeUsageCommandInput) { _, _ in
+                            scheduleClaudeUsageCommandSubmit()
+                        }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+            }
+
+            settingsTile(title: "cc-paths", minHeight: 176) {
+                ZStack(alignment: .topLeading) {
+                    if claudeSettingsInput.isEmpty {
+                        Text("{\n  \"paths\": []\n}")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.22))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                    }
+
+                    PlainJSONEditor(text: $claudeSettingsInput)
+                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                        .onChange(of: claudeSettingsInput) { _, _ in
+                            scheduleClaudeSettingsSubmit()
+                        }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.045))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                )
+            }
+        }
+        .onAppear {
+            claudeUsageCommandInput = claudeUsageCommandJSONText()
+            claudeUsageCommandLastSubmitted = claudeUsageCommandInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            claudeSettingsInput = claudeSettingsJSONText()
+            claudeSettingsLastSubmitted = claudeSettingsInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .onChange(of: providerAuthRefreshToken()) { _, _ in
+            let latestUsageCommand = claudeUsageCommandJSONText()
+            let normalizedLatestUsageCommand = latestUsageCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+            if claudeUsageCommandInput.trimmingCharacters(in: .whitespacesAndNewlines) == claudeUsageCommandLastSubmitted {
+                claudeUsageCommandInput = latestUsageCommand
+                claudeUsageCommandLastSubmitted = normalizedLatestUsageCommand
+            }
+
+            let latestClaudeSettings = claudeSettingsJSONText()
+            let normalizedLatestClaudeSettings = latestClaudeSettings.trimmingCharacters(in: .whitespacesAndNewlines)
+            if claudeSettingsInput.trimmingCharacters(in: .whitespacesAndNewlines) == claudeSettingsLastSubmitted {
+                claudeSettingsInput = latestClaudeSettings
+                claudeSettingsLastSubmitted = normalizedLatestClaudeSettings
+            }
+        }
+        .onDisappear {
+            submitClaudeUsageCommand()
+            submitClaudeSettings()
+        }
+        .padding(14)
+        .frame(width: 780, alignment: .leading)
+        .background(
+            ZStack {
+                Color(red: 0.055, green: 0.058, blue: 0.068)
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.03),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+        )
+    }
+
+    private func settingsTile<Accessory: View>(
+        title: String,
+        minHeight: CGFloat = 62,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.94))
+                .lineLimit(1)
+
+            Spacer(minLength: 10)
+
+            accessory()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.05),
+                            Color.white.opacity(0.025)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
+    }
+
+    private func pickerCapsule(title: String, width: CGFloat) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(width: width, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var soundMutedBinding: Binding<Bool> {
+        Binding(
+            get: { !store.isSoundMuted },
+            set: { isEnabled in
+                if store.isSoundMuted == isEnabled {
+                    store.toggleSoundMuted()
+                }
+            }
+        )
+    }
+
+    private var availableLogos: [IslandBrandLogo] {
+        [.hermit, .clawd, .zenmux, .claudeCodeColor, .codexColor, .codexMono, .openAI]
+    }
+
+    private func submitClaudeSettings() {
+        let normalizedInput = claudeSettingsInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedInput != claudeSettingsLastSubmitted else {
+            return
+        }
+        claudeSettingsLastSubmitted = normalizedInput
+        if normalizedInput != claudeSettingsJSONText().trimmingCharacters(in: .whitespacesAndNewlines) {
+            onClaudeSettingsJSONSubmit(normalizedInput)
+        }
+    }
+
+    private func submitClaudeUsageCommand() {
+        let normalizedInput = claudeUsageCommandInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedInput != claudeUsageCommandLastSubmitted else {
+            return
+        }
+        claudeUsageCommandLastSubmitted = normalizedInput
+        if normalizedInput != claudeUsageCommandJSONText().trimmingCharacters(in: .whitespacesAndNewlines) {
+            onClaudeUsageCommandJSONSubmit(normalizedInput)
+        }
+    }
+
+    private func scheduleClaudeSettingsSubmit() {
+        let snapshot = claudeSettingsInput
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard snapshot == claudeSettingsInput else {
+                return
+            }
+            submitClaudeSettings()
+        }
+    }
+
+    private func scheduleClaudeUsageCommandSubmit() {
+        let snapshot = claudeUsageCommandInput
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard snapshot == claudeUsageCommandInput else {
+                return
+            }
+            submitClaudeUsageCommand()
+        }
+    }
+}
+
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private enum ScreenPlacementMode: Equatable {
         case automatic
         case fixed(CGDirectDisplayID)
@@ -29,6 +471,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var localMouseMonitor: Any?
     private var globalMouseMonitor: Any?
     private var statusItem: NSStatusItem?
+    private var settingsPanel: NSWindow?
+    private var providerConfigMonitor: DispatchSourceFileSystemObject?
+    private var providerConfigMonitorFileDescriptor: CInt = -1
+    private var providerConfigPollTimer: Timer?
+    private var providerConfigLastKnownModificationDate: Date?
+    private var providerConfigRefreshToken = 0
     private var visibilityMenuItem: NSMenuItem?
     private var screenMenuItem: NSMenuItem?
     private var automaticScreenMenuItem: NSMenuItem?
@@ -45,6 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let screenPlacementModeDefaultsKey = "HermitFlow.screenPlacementMode"
     private let fixedScreenIDDefaultsKey = "HermitFlow.fixedScreenID"
     private let debugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
+    private var mainWindowWasVisibleBeforeSettings = false
 
     private var windowCoordinator: IslandWindowCoordinator { environment.windowCoordinator }
     private var windowSizingCoordinator: WindowSizingCoordinator { environment.windowSizingCoordinator }
@@ -54,6 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         createWindow()
+        wireStoreActions()
         createStatusItem()
         registerScreenObservers()
         registerOutsideClickMonitors()
@@ -62,6 +512,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard let settingsPanel else {
+            return false
+        }
+
+        if settingsPanel.isMiniaturized {
+            settingsPanel.deminiaturize(nil)
+        }
+
+        settingsPanel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -121,6 +585,142 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         self.window = window
+    }
+
+    private func wireStoreActions() {
+        store.onOpenSettingsPanel = { [weak self] in
+            self?.presentSettingsPanel()
+        }
+    }
+
+    private func presentSettingsPanel() {
+        mainWindowWasVisibleBeforeSettings = false
+        store.showIsland()
+        NSApp.setActivationPolicy(.regular)
+        keepIslandVisibleForSettings()
+
+        let rootView = makeSettingsPanelView()
+
+        if let settingsPanel {
+            if settingsPanel.isMiniaturized {
+                settingsPanel.deminiaturize(nil)
+            }
+            settingsPanel.contentView = NSHostingView(rootView: rootView)
+            settingsPanel.makeKeyAndOrderFront(nil)
+            keepIslandVisibleForSettings()
+            NSApp.activate(ignoringOtherApps: true)
+            startProviderConfigSync()
+            return
+        }
+
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 812, height: 438),
+            styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+
+        panel.title = "Settings"
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.isReleasedWhenClosed = false
+        panel.titlebarAppearsTransparent = true
+        panel.isMovableByWindowBackground = true
+        panel.level = .normal
+        panel.collectionBehavior = []
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.delegate = self
+
+        panel.contentView = NSHostingView(rootView: rootView)
+        positionSettingsPanel(panel)
+        panel.makeKeyAndOrderFront(nil)
+        keepIslandVisibleForSettings()
+        NSApp.activate(ignoringOtherApps: true)
+        settingsPanel = panel
+        startProviderConfigSync()
+    }
+
+    private func makeSettingsPanelView() -> SettingsPanelView {
+        SettingsPanelView(
+            store: store,
+            currentScreenTitle: { [weak self] in
+                self?.currentScreenSelectionTitle ?? "Auto"
+            },
+            screenOptions: { [weak self] in
+                self?.settingsScreenOptions ?? []
+            },
+            claudeUsageCommandJSONText: { [weak self] in
+                self?.claudeUsageCommandJSONText ?? ""
+            },
+            onClaudeUsageCommandJSONSubmit: { [weak self] value in
+                self?.updateClaudeUsageCommandJSON(from: value)
+            },
+            claudeSettingsJSONText: { [weak self] in
+                self?.claudeSettingsJSONText ?? ""
+            },
+            onClaudeSettingsJSONSubmit: { [weak self] value in
+                self?.updateClaudeSettingsJSON(from: value)
+            },
+            approvalDefaultFocus: { [weak self] in
+                self?.store.approvalDefaultFocus ?? .accept
+            },
+            onApprovalDefaultFocusSelected: { [weak self] option in
+                self?.store.setApprovalDefaultFocus(option)
+            },
+            providerAuthRows: { [weak self] in
+                self?.claudeProviderAuthRows ?? []
+            },
+            providerAuthRefreshToken: { [weak self] in
+                self?.providerConfigRefreshToken ?? 0
+            },
+            onProviderAuthEnvKeySubmit: { [weak self] providerID, value in
+                self?.updateClaudeProviderUsageAuthEnvKey(providerID: providerID, value: value)
+            }
+        )
+    }
+
+    private func closeSettingsPanel() {
+        settingsPanel?.close()
+    }
+
+    private func positionSettingsPanel(_ panel: NSWindow) {
+        let panelSize = panel.frame.size
+        let referenceFrame = window?.frame ?? NSScreen.main?.visibleFrame ?? .zero
+        let visibleFrame = window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        let originX = referenceFrame.midX - panelSize.width / 2
+        let preferredGap: CGFloat = 72
+        let minimumBottomMargin: CGFloat = 12
+        let preferredY = referenceFrame.minY - panelSize.height - preferredGap
+        let minimumY = visibleFrame.minY + minimumBottomMargin
+        let originY = max(preferredY, minimumY)
+        panel.setFrameOrigin(NSPoint(x: originX.rounded(), y: originY.rounded()))
+    }
+
+    private func keepIslandVisibleForSettings() {
+        guard let window else {
+            return
+        }
+
+        position(window: window, size: store.windowSize, animation: nil)
+        windowCoordinator.orderFront()
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.settingsPanel != nil || NSApp.activationPolicy() == .regular else {
+                return
+            }
+
+            self.position(window: window, size: self.store.windowSize, animation: nil)
+            self.windowCoordinator.orderFront()
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let closingWindow = notification.object as? NSWindow, closingWindow === settingsPanel else {
+            return
+        }
+
+        stopProviderConfigSync()
+        mainWindowWasVisibleBeforeSettings = false
+        NSApp.setActivationPolicy(.accessory)
     }
 
     private func createStatusItem() {
@@ -643,6 +1243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.orderFrontRegardless()
         rebuildScreenMenu()
         updateMenuState()
+        store.objectWillChange.send()
     }
 
     private func rebuildScreenMenu() {
@@ -699,6 +1300,287 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func isBuiltInDisplay(_ displayID: CGDirectDisplayID) -> Bool {
         CGDisplayIsBuiltin(displayID) != 0
+    }
+
+    private var currentScreenSelectionTitle: String {
+        switch screenPlacementMode {
+        case .automatic:
+            return "Auto"
+        case let .fixed(displayID):
+            guard let screen = screen(for: displayID) else {
+                return "Auto"
+            }
+
+            return titleForScreen(screen, displayID: displayID)
+        }
+    }
+
+    private var settingsScreenOptions: [SettingsPanelView.ScreenOption] {
+        var options: [SettingsPanelView.ScreenOption] = [
+            .init(id: "auto", title: "Auto") { [weak self] in
+                self?.setScreenPlacementMode(.automatic)
+            }
+        ]
+
+        options.append(contentsOf: NSScreen.screens.compactMap { screen in
+            guard let displayID = screen.displayID else {
+                return nil
+            }
+
+            return SettingsPanelView.ScreenOption(
+                id: String(displayID),
+                title: titleForScreen(screen, displayID: displayID)
+            ) { [weak self] in
+                self?.setScreenPlacementMode(.fixed(displayID))
+            }
+        })
+
+        return options
+    }
+
+    private var claudeSettingsJSONText: String {
+        loadClaudeSettingsJSONText()
+    }
+
+    private var claudeUsageCommandJSONText: String {
+        loadClaudeUsageCommandJSONText()
+    }
+
+    private var claudeProviderAuthRows: [ProviderAuthEnvKeyRow] {
+        loadClaudeProviderUsageConfigForSettings().providers.map { provider in
+            ProviderAuthEnvKeyRow(
+                id: provider.id,
+                authEnvKey: provider.usageRequest.authEnvKey ?? ""
+            )
+        }
+    }
+
+    private func updateClaudeSettingsJSON(from rawInput: String) {
+        do {
+            try FileManager.default.createDirectory(
+                at: FilePaths.hermitFlowHome,
+                withIntermediateDirectories: true
+            )
+            let normalizedInput = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = normalizedInput.isEmpty ? "{\n  \"paths\": []\n}\n" : normalizedInput + "\n"
+            let data = Data(text.utf8)
+            try data.write(to: FilePaths.claudeSettingsPaths, options: .atomic)
+            store.objectWillChange.send()
+            store.resyncClaudeHooks()
+        } catch {
+            debugLog("Failed to write Claude settings JSON: \(error.localizedDescription)")
+        }
+    }
+
+    private func updateClaudeUsageCommandJSON(from rawInput: String) {
+        do {
+            try FileManager.default.createDirectory(
+                at: FilePaths.hermitFlowHome,
+                withIntermediateDirectories: true
+            )
+
+            var config = loadClaudeProviderUsageConfigForSettings()
+            let normalizedInput = rawInput.trimmingCharacters(in: .whitespacesAndNewlines)
+            let command = try decodeClaudeUsageCommand(from: normalizedInput)
+            config.usageCommand = command
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(config)
+            try data.write(to: FilePaths.claudeProviderUsageConfig, options: .atomic)
+
+            restartProviderConfigMonitor()
+            refreshProviderConfigState()
+        } catch {
+            debugLog("Failed to write Claude usage command JSON: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadClaudeSettingsJSONText() -> String {
+        guard FileManager.default.fileExists(atPath: FilePaths.claudeSettingsPaths.path) else {
+            return "{\n  \"paths\": []\n}"
+        }
+
+        do {
+            let data = try Data(contentsOf: FilePaths.claudeSettingsPaths)
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            debugLog("Failed to load Claude settings JSON: \(error.localizedDescription)")
+            return "{\n  \"paths\": []\n}"
+        }
+    }
+
+    private func loadClaudeUsageCommandJSONText() -> String {
+        let config = loadClaudeProviderUsageConfigForSettings()
+        let usageCommand = config.usageCommand ?? ClaudeProviderUsageConfig.defaultConfig.usageCommand
+
+        guard let usageCommand else {
+            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(usageCommand)
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            debugLog("Failed to encode Claude usage command JSON: \(error.localizedDescription)")
+            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+        }
+    }
+
+    private func loadClaudeProviderUsageConfigForSettings() -> ClaudeProviderUsageConfig {
+        let decoder = JSONDecoder()
+
+        guard FileManager.default.fileExists(atPath: FilePaths.claudeProviderUsageConfig.path) else {
+            return ClaudeProviderUsageConfig.defaultConfig
+        }
+
+        do {
+            let data = try Data(contentsOf: FilePaths.claudeProviderUsageConfig)
+            return try decoder.decode(ClaudeProviderUsageConfig.self, from: data)
+        } catch {
+            debugLog("Failed to load Claude provider usage config, falling back to defaults: \(error.localizedDescription)")
+            return ClaudeProviderUsageConfig.defaultConfig
+        }
+    }
+
+    private func decodeClaudeUsageCommand(from rawInput: String) throws -> ClaudeProviderUsageCommand {
+        let normalizedInput = rawInput.isEmpty
+            ? "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+            : rawInput
+
+        let data = Data(normalizedInput.utf8)
+        return try JSONDecoder().decode(ClaudeProviderUsageCommand.self, from: data)
+    }
+
+    private func updateClaudeProviderUsageAuthEnvKey(providerID: String, value: String) {
+        do {
+            try FileManager.default.createDirectory(
+                at: FilePaths.hermitFlowHome,
+                withIntermediateDirectories: true
+            )
+
+            var config = loadClaudeProviderUsageConfigForSettings()
+            guard let index = config.providers.firstIndex(where: { $0.id == providerID }) else {
+                return
+            }
+
+            let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            config.providers[index].usageRequest.authEnvKey = normalizedValue.isEmpty ? nil : normalizedValue
+
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(config)
+            try data.write(to: FilePaths.claudeProviderUsageConfig, options: .atomic)
+
+            restartProviderConfigMonitor()
+            refreshProviderConfigState()
+        } catch {
+            debugLog("Failed to write Claude provider usage config: \(error.localizedDescription)")
+        }
+    }
+
+    private func startProviderConfigSync() {
+        refreshProviderConfigState()
+        startProviderConfigPollTimer()
+        restartProviderConfigMonitor()
+    }
+
+    private func stopProviderConfigSync() {
+        providerConfigMonitor?.cancel()
+        providerConfigMonitor = nil
+
+        if providerConfigMonitorFileDescriptor >= 0 {
+            close(providerConfigMonitorFileDescriptor)
+            providerConfigMonitorFileDescriptor = -1
+        }
+
+        providerConfigPollTimer?.invalidate()
+        providerConfigPollTimer = nil
+        providerConfigLastKnownModificationDate = nil
+    }
+
+    private func startProviderConfigPollTimer() {
+        providerConfigPollTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.pollProviderConfigChanges()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        providerConfigPollTimer = timer
+    }
+
+    private func pollProviderConfigChanges() {
+        let currentModificationDate = providerConfigModificationDate()
+        if currentModificationDate != providerConfigLastKnownModificationDate {
+            refreshProviderConfigState()
+            restartProviderConfigMonitor()
+        } else if providerConfigMonitor == nil && FileManager.default.fileExists(atPath: FilePaths.claudeProviderUsageConfig.path) {
+            restartProviderConfigMonitor()
+        }
+    }
+
+    private func restartProviderConfigMonitor() {
+        providerConfigMonitor?.cancel()
+        providerConfigMonitor = nil
+
+        if providerConfigMonitorFileDescriptor >= 0 {
+            close(providerConfigMonitorFileDescriptor)
+            providerConfigMonitorFileDescriptor = -1
+        }
+
+        let path = FilePaths.claudeProviderUsageConfig.path
+        guard FileManager.default.fileExists(atPath: path) else {
+            return
+        }
+
+        let fileDescriptor = open(path, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            return
+        }
+
+        providerConfigMonitorFileDescriptor = fileDescriptor
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename, .attrib],
+            queue: DispatchQueue.main
+        )
+        source.setEventHandler { [weak self] in
+            self?.handleProviderConfigFilesystemEvent()
+        }
+        source.setCancelHandler { [weak self] in
+            guard let self else { return }
+            if self.providerConfigMonitorFileDescriptor >= 0 {
+                close(self.providerConfigMonitorFileDescriptor)
+                self.providerConfigMonitorFileDescriptor = -1
+            }
+        }
+        providerConfigMonitor = source
+        source.resume()
+    }
+
+    private func handleProviderConfigFilesystemEvent() {
+        refreshProviderConfigState()
+        restartProviderConfigMonitor()
+    }
+
+    private func refreshProviderConfigState() {
+        providerConfigLastKnownModificationDate = providerConfigModificationDate()
+        providerConfigRefreshToken &+= 1
+        store.objectWillChange.send()
+    }
+
+    private func providerConfigModificationDate() -> Date? {
+        guard let attributes = try? FileManager.default.attributesOfItem(
+            atPath: FilePaths.claudeProviderUsageConfig.path
+        ) else {
+            return nil
+        }
+
+        return attributes[.modificationDate] as? Date
     }
 
     private var isWindowVisible: Bool {
@@ -811,6 +1693,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc
     private func handleActiveSpaceDidChange(_ notification: Notification) {
         guard let window else { return }
+        guard settingsPanel?.isVisible != true else { return }
 
         let shouldKeepPanelExpanded = store.isExpanded
         if shouldKeepPanelExpanded {

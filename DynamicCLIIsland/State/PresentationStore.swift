@@ -8,6 +8,20 @@
 import Foundation
 import SwiftUI
 
+enum ApprovalDefaultFocusOption: String, CaseIterable {
+    case accept
+    case acceptAll
+
+    var menuTitle: String {
+        switch self {
+        case .accept:
+            return "接受"
+        case .acceptAll:
+            return "全部接受"
+        }
+    }
+}
+
 @MainActor
 final class PresentationStore: ObservableObject {
     typealias BrandLogo = IslandBrandLogo
@@ -44,6 +58,7 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var approvalPreviewEnabled = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
+    @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
@@ -51,6 +66,7 @@ final class PresentationStore: ObservableObject {
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
     private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
+    private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
 
     // TODO: These timing fields are still coupled to legacy AppDelegate behaviors.
     private var hasHoveredInsidePanelSinceShown = false
@@ -72,6 +88,8 @@ final class PresentationStore: ObservableObject {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
         isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
+        let storedApprovalDefaultFocus = UserDefaults.standard.string(forKey: approvalDefaultFocusDefaultsKey)
+        approvalDefaultFocus = ApprovalDefaultFocusOption(rawValue: storedApprovalDefaultFocus ?? "") ?? .accept
     }
 
     var windowSize: CGSize {
@@ -318,6 +336,15 @@ final class PresentationStore: ObservableObject {
     func toggleSoundMuted() {
         isSoundMuted.toggle()
         UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
+    }
+
+    func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
+        guard approvalDefaultFocus != option else {
+            return
+        }
+
+        approvalDefaultFocus = option
+        UserDefaults.standard.set(option.rawValue, forKey: approvalDefaultFocusDefaultsKey)
     }
 
     func syncRuntimeContext(

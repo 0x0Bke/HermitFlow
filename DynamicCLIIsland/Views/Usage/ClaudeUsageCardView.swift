@@ -15,12 +15,8 @@ struct ClaudeUsageCardView: View {
             header
 
             HStack(spacing: 12) {
-                if let fiveHour = snapshot.fiveHour {
-                    metricCard(title: "5h", window: fiveHour, subtitle: "5 hour window")
-                }
-
-                if let sevenDay = snapshot.sevenDay {
-                    metricCard(title: "7d", window: sevenDay, subtitle: "7 day window")
+                ForEach(snapshot.displayWindows, id: \.id) { item in
+                    metricCard(title: item.label, window: item.window, subtitle: subtitle(for: item))
                 }
             }
         }
@@ -69,13 +65,26 @@ struct ClaudeUsageCardView: View {
         return "Claude Code"
     }
 
+    private func subtitle(for item: ClaudeLabeledUsageWindow) -> String {
+        switch item.id {
+        case "five_hour":
+            return "5 hour remaining"
+        case "seven_day":
+            return "7 day remaining"
+        case "day":
+            return "Daily remaining"
+        default:
+            return "\(item.label) remaining"
+        }
+    }
+
     private func metricCard(title: String, window: ClaudeUsageWindow, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color(red: 0.48, green: 0.84, blue: 0.99))
 
-            Text("\(window.roundedUsedPercentage)%")
+            Text("\(window.roundedLeftPercentage)%")
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 

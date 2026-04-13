@@ -3814,11 +3814,22 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     }
 }
 
-private enum ClaudeHookConfigurationError: Error {
+private enum ClaudeHookConfigurationError: LocalizedError {
     case invalidSettingsRoot
     case invalidCustomSettingsPathsFile(String)
     case partialSyncFailed([String])
     case syncFailed([String])
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidSettingsRoot:
+            return "settings root is not a JSON object"
+        case let .invalidCustomSettingsPathsFile(path):
+            return "custom settings path file is invalid: \(path)"
+        case let .partialSyncFailed(reasons), let .syncFailed(reasons):
+            return reasons.joined(separator: "; ")
+        }
+    }
 }
 
 private struct ClaudeProjectDerivedState {

@@ -70,6 +70,7 @@ final class AppStore: ObservableObject {
     var usesExternalDisplayLayout: Bool { presentationStore.usesExternalDisplayLayout }
     var approvalDiagnosticMessage: String? { runtimeStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { presentationStore.approvalPreviewEnabled }
+    var approvalDefaultFocus: ApprovalDefaultFocusOption { presentationStore.approvalDefaultFocus }
     var collapsedInlineApprovalID: String? { presentationStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { runtimeStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { runtimeStore.accessibilityPromptDismissed }
@@ -205,6 +206,10 @@ final class AppStore: ObservableObject {
 
     func toggleSoundMuted() {
         presentationStore.toggleSoundMuted()
+    }
+
+    func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
+        presentationStore.setApprovalDefaultFocus(option)
     }
 
     func bringForward(_ target: FocusTarget?) {

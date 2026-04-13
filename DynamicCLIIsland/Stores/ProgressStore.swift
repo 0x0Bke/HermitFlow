@@ -25,6 +25,8 @@ final class ProgressStore: ObservableObject {
     private var lastClaudeUsageRefreshAt: Date?
     private var lastCodexUsageRefreshAt: Date?
 
+    var onOpenSettingsPanel: (() -> Void)?
+
     @Published private(set) var claudeUsageSnapshot: ClaudeUsageSnapshot?
     @Published private(set) var codexUsageSnapshot: CodexUsageSnapshot?
 
@@ -70,6 +72,7 @@ final class ProgressStore: ObservableObject {
     var approvalRequest: ApprovalRequest? { appStore.approvalRequest }
     var approvalDiagnosticMessage: String? { appStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { appStore.approvalPreviewEnabled }
+    var approvalDefaultFocus: ApprovalDefaultFocusOption { appStore.approvalDefaultFocus }
     var collapsedInlineApprovalID: String? { appStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { appStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { appStore.accessibilityPromptDismissed }
@@ -157,6 +160,14 @@ final class ProgressStore: ObservableObject {
 
     func toggleSoundMuted() {
         appStore.toggleSoundMuted()
+    }
+
+    func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
+        appStore.setApprovalDefaultFocus(option)
+    }
+
+    func openSettingsPanel() {
+        onOpenSettingsPanel?()
     }
 
     func bringForward(_ target: FocusTarget?) {
