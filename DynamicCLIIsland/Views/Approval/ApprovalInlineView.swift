@@ -33,6 +33,7 @@ struct ApprovalInlineView: View {
     let defaultFocus: ApprovalDefaultFocusOption
 
     @State private var selectedAction: ApprovalSelection = .allowOnce
+    @State private var isCommandExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -86,31 +87,17 @@ struct ApprovalInlineView: View {
                         .truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Command")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
-
-                        Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.black.opacity(0.4))
-                    )
-
                     Text(timestampText)
                         .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
+
+                    commandSection
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .layoutPriority(1)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(
@@ -129,6 +116,7 @@ struct ApprovalInlineView: View {
                         .stroke(Color(red: 0.32, green: 0.96, blue: 0.38).opacity(0.20), lineWidth: 1)
                 )
                 .padding(.bottom, 12)
+                .layoutPriority(1)
 
                 HStack(spacing: 8) {
                     decisionButton(
@@ -171,6 +159,7 @@ struct ApprovalInlineView: View {
             }
             .padding(.horizontal, 36)
             .padding(.top, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -190,6 +179,9 @@ struct ApprovalInlineView: View {
         .onChange(of: defaultFocus) { _, _ in
             resetSelection()
         }
+        .onChange(of: store.inlineApprovalCommandExpanded) { _, newValue in
+            isCommandExpanded = newValue
+        }
     }
 
     private var sourcePill: some View {
@@ -202,6 +194,72 @@ struct ApprovalInlineView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(request.source.provider.tint.opacity(0.14))
             )
+    }
+
+    private var shouldShowCommandToggle: Bool {
+        !commandText.isEmpty
+    }
+
+    private var commandText: String {
+        request.commandText.isEmpty ? request.commandSummary : request.commandText
+    }
+
+    private var commandDisplayText: String {
+        let command = commandText.isEmpty ? "Waiting for command detail" : commandText
+        let breakableSeparators = ["/", "\\", " ", "-", "_", "=", ":", ","]
+        return breakableSeparators.reduce(command) { partial, separator in
+            partial.replacingOccurrences(of: separator, with: "\(separator)\u{200B}")
+        }
+    }
+
+    private var commandSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Command")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
+
+                Spacer(minLength: 8)
+
+                if shouldShowCommandToggle {
+                    Button(action: toggleCommandExpansion) {
+                        Text(isCommandExpanded ? "Collapse" : "Expand")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+            if isCommandExpanded {
+                GeometryReader { geometry in
+                    ScrollView(.vertical, showsIndicators: true) {
+                        Text(commandDisplayText)
+                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
+                            .frame(width: max(geometry.size.width, 1), alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                .frame(minHeight: 170, maxHeight: .infinity, alignment: .topLeading)
+                .id("command-expanded")
+            } else {
+                Text(commandDisplayText)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .id("command-collapsed")
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.black.opacity(0.4))
+        )
     }
 
     private func decisionButton(
@@ -266,6 +324,15 @@ struct ApprovalInlineView: View {
         case .acceptAll:
             .alwaysAllow
         }
+
+        isCommandExpanded = false
+        store.updateInlineApprovalCommandExpanded(false)
+    }
+
+    private func toggleCommandExpansion() {
+        let nextValue = !isCommandExpanded
+        isCommandExpanded = nextValue
+        store.updateInlineApprovalCommandExpanded(nextValue)
     }
 
     private func performSelectedAction() {

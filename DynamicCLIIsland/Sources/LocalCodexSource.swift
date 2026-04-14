@@ -909,6 +909,7 @@ struct LocalCodexSource: @unchecked Sendable {
             pendingRequest: ApprovalRequest(
                 id: latestPending.callID,
                 commandSummary: summarizeCommand(latestPending.command),
+                commandText: normalizedCommandText(latestPending.command),
                 rationale: latestPending.justification,
                 focusTarget: focusTarget,
                 createdAt: latestPending.timestamp,
@@ -920,16 +921,21 @@ struct LocalCodexSource: @unchecked Sendable {
     }
 
     private func summarizeCommand(_ command: String) -> String {
-        let singleLine = command
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\t", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let singleLine = normalizedCommandText(command)
 
         guard singleLine.count > 96 else {
             return singleLine
         }
 
         return String(singleLine.prefix(96)) + "..."
+    }
+
+    private func normalizedCommandText(_ command: String) -> String {
+        let singleLine = command
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return singleLine
     }
 
     private func fetchSessionActivityHints(from fileURL: URL) -> LocalCodexSessionActivityHints? {
@@ -1914,6 +1920,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 sessionID: sessionID,
                 createdAt: .now,
                 commandSummary: summary,
+                commandText: permissionCommandText(payload),
                 rationale: rationale,
                 connection: connection
             )
@@ -2125,6 +2132,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             return ApprovalRequest(
                 id: approval.id,
                 commandSummary: approval.commandSummary,
+                commandText: approval.commandText,
                 rationale: approval.rationale,
                 focusTarget: focusTarget,
                 createdAt: approval.createdAt,
@@ -3062,17 +3070,33 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         return payload.toolName
     }
 
+    private func permissionCommandText(_ payload: ClaudeHookPermissionPayload) -> String {
+        if let command = payload.toolInput?.command, !command.isEmpty {
+            return normalizedCommandText(command)
+        }
+
+        if let path = payload.toolInput?.filePath, !path.isEmpty {
+            return path
+        }
+
+        return payload.toolName
+    }
+
     private func summarizeCommand(_ command: String) -> String {
-        let singleLine = command
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\t", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let singleLine = normalizedCommandText(command)
 
         guard singleLine.count > 96 else {
             return singleLine
         }
 
         return String(singleLine.prefix(96)) + "..."
+    }
+
+    private func normalizedCommandText(_ command: String) -> String {
+        command
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func makePermissionDecision(for decision: ApprovalDecision, message: String? = nil) -> String {
@@ -4133,6 +4157,7 @@ private final class ClaudePendingApproval {
     let sessionID: String
     let createdAt: Date
     let commandSummary: String
+    let commandText: String
     let rationale: String?
     var connection: NWConnection?
 
@@ -4141,6 +4166,7 @@ private final class ClaudePendingApproval {
         sessionID: String,
         createdAt: Date,
         commandSummary: String,
+        commandText: String,
         rationale: String?,
         connection: NWConnection
     ) {
@@ -4148,6 +4174,7 @@ private final class ClaudePendingApproval {
         self.sessionID = sessionID
         self.createdAt = createdAt
         self.commandSummary = commandSummary
+        self.commandText = commandText
         self.rationale = rationale
         self.connection = connection
     }

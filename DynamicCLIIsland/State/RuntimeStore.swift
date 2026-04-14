@@ -840,6 +840,7 @@ final class RuntimeStore: ObservableObject {
         return ApprovalRequest(
             id: "preview-approval",
             commandSummary: "open -a Calculator",
+            commandText: "open -a Calculator",
             rationale: "Preview approval UI in island mode without waiting for a real pending request.",
             focusTarget: previewTarget,
             createdAt: .now,

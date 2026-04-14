@@ -71,6 +71,7 @@ final class AppStore: ObservableObject {
     var approvalDiagnosticMessage: String? { runtimeStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { presentationStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { presentationStore.approvalDefaultFocus }
+    var inlineApprovalCommandExpanded: Bool { presentationStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { presentationStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { runtimeStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { runtimeStore.accessibilityPromptDismissed }
@@ -210,6 +211,10 @@ final class AppStore: ObservableObject {
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         presentationStore.setApprovalDefaultFocus(option)
+    }
+
+    func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
+        presentationStore.updateInlineApprovalCommandExpanded(expanded)
     }
 
     func bringForward(_ target: FocusTarget?) {

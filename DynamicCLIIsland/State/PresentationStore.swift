@@ -57,12 +57,14 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var usesExternalDisplayLayout = false
     @Published private(set) var collapsedInlineApprovalID: String?
     @Published private(set) var approvalPreviewEnabled = false
+    @Published private(set) var inlineApprovalCommandExpanded = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
+    private let inlineApprovalExpandedHeight: CGFloat = 460
     private let inlineApprovalIslandFixedWidth: CGFloat = 560
     private let externalDisplayCompactWidthMultiplier: CGFloat = 1.6
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
@@ -141,7 +143,8 @@ final class PresentationStore: ObservableObject {
 
     private var islandHeight: CGFloat {
         if isInlineApprovalExpanded {
-            return max(compactHeight, inlineApprovalMinimumHeight)
+            let minimumHeight = inlineApprovalCommandExpanded ? inlineApprovalExpandedHeight : inlineApprovalMinimumHeight
+            return max(compactHeight, minimumHeight)
         }
 
         return compactHeight
@@ -371,6 +374,9 @@ final class PresentationStore: ObservableObject {
         sessions: [AgentSessionSnapshot],
         usageCardCount: Int = 0
     ) {
+        if approvalRequest?.id != currentApprovalRequest?.id || approvalRequest == nil {
+            inlineApprovalCommandExpanded = false
+        }
         currentApprovalRequest = approvalRequest
         currentSessions = sessions
         currentUsageCardCount = usageCardCount
@@ -378,6 +384,19 @@ final class PresentationStore: ObservableObject {
 
     func resetCollapsedInlineApproval() {
         collapsedInlineApprovalID = nil
+    }
+
+    func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
+        guard inlineApprovalCommandExpanded != expanded else {
+            return
+        }
+
+        inlineApprovalCommandExpanded = expanded
+        guard isInlineApprovalExpanded else {
+            return
+        }
+
+        notifyWindowSizeChange()
     }
 
     private func setDisplayMode(_ mode: DisplayMode) {

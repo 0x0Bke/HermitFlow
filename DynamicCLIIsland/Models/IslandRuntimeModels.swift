@@ -162,6 +162,7 @@ struct FocusTarget: Hashable {
 struct ApprovalRequest: Identifiable, Hashable {
     let id: String
     let commandSummary: String
+    let commandText: String
     let rationale: String?
     let focusTarget: FocusTarget?
     let createdAt: Date

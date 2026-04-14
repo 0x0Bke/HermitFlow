@@ -55,7 +55,7 @@ struct ApprovalPanelView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 sectionBlock(title: "Command", systemImage: "terminal", tint: Color(red: 0.48, green: 0.84, blue: 0.99), background: Color.black.opacity(0.5)) {
-                    Text(request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary)
+                    Text(request.commandText.isEmpty ? (request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary) : request.commandText)
                         .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .lineLimit(4)
