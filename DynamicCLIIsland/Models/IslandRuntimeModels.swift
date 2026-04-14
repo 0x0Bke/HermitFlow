@@ -89,7 +89,7 @@ enum SessionOrigin: String, Hashable {
     }
 }
 
-enum FocusClientOrigin: String, Hashable {
+enum FocusClientOrigin: String, Hashable, Codable {
     case claudeCLI
     case claudeVSCode
     case codexDesktop

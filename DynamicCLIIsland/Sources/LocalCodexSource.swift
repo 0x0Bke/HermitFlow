@@ -1622,12 +1622,14 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let claudeUsageCacheURL = URL(fileURLWithPath: "/tmp/hermitflow-rl.json")
     private let claudeStatusLineDebugURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
     private let claudeHistoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/history.jsonl")
+    private let claudeSessionsRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/sessions")
     private let claudeProjectsRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
     private let claudeDebugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-debug.log")
     private let recentHistoryScanBytes = 512 * 1024
     private let recentClaudeProjectFileLimit = 20
     private let interruptionOverrideWindow: TimeInterval = 10
     private let stalledPromptFallbackWindow: TimeInterval = 3
+    private let claudePromptRunningWindow: TimeInterval = 15
     private let historyTimestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -1927,6 +1929,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     for: sessionID,
                     cwd: existing?.cwd ?? ""
                 ),
+                clientOrigin: existing?.clientOrigin,
                 terminalClient: existing?.terminalClient,
                 terminalSessionHint: existing?.terminalSessionHint,
                 status: .running,
@@ -2134,7 +2137,10 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     }
 
     private func makeSnapshots() -> [AgentSessionSnapshot] {
-        sessions.values.sorted { lhs, rhs in
+        var discoveredSessions = sessions
+        mergeDiscoveredClaudeSessions(into: &discoveredSessions)
+
+        return discoveredSessions.values.sorted { lhs, rhs in
             lhs.lastActivityAt > rhs.lastActivityAt
         }.map { session in
             let projectState = fetchClaudeProjectDerivedState(
@@ -2165,6 +2171,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     for: refreshedSession.rawSessionID,
                     cwd: refreshedSession.cwd
                 ),
+                clientOrigin: refreshedSession.clientOrigin,
                 terminalClient: refreshedSession.terminalClient,
                 terminalSessionHint: refreshedSession.terminalSessionHint,
                 status: refreshedSession.status,
@@ -2187,17 +2194,19 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     }
 
     private func makeClaudeFocusTarget(from session: ClaudeTrackedSession) -> FocusTarget? {
-        guard let terminalClient = session.terminalClient else {
+        let workspaceHint = session.cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        let clientOrigin = session.clientOrigin ?? (session.terminalClient != nil ? .claudeCLI : .claudeVSCode)
+
+        if clientOrigin == .claudeCLI, session.terminalClient == nil {
             return nil
         }
 
-        let workspaceHint = session.cwd.trimmingCharacters(in: .whitespacesAndNewlines)
         return FocusTarget(
-            clientOrigin: .claudeCLI,
+            clientOrigin: clientOrigin,
             sessionID: session.rawSessionID,
-            displayName: "\(terminalClient.displayName) Claude",
+            displayName: focusDisplayName(for: clientOrigin, terminalClient: session.terminalClient),
             cwd: workspaceHint.isEmpty ? nil : workspaceHint,
-            terminalClient: terminalClient,
+            terminalClient: session.terminalClient,
             terminalSessionHint: session.terminalSessionHint,
             workspaceHint: workspaceHint.isEmpty ? nil : workspaceHint
         )
@@ -2221,6 +2230,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: payload.cwd.isEmpty ? existing.cwd : payload.cwd,
                 source: payload.source.isEmpty ? existing.source : payload.source,
                 conversationSummary: existing.conversationSummary,
+                clientOrigin: payload.clientOrigin ?? existing.clientOrigin,
                 terminalClient: payload.terminalClient ?? existing.terminalClient,
                 terminalSessionHint: payload.terminalSessionHint ?? existing.terminalSessionHint,
                 status: existing.status,
@@ -2238,6 +2248,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: payload.cwd.isEmpty ? existing.cwd : payload.cwd,
                 source: payload.source.isEmpty ? existing.source : payload.source,
                 conversationSummary: existing.conversationSummary,
+                clientOrigin: payload.clientOrigin ?? existing.clientOrigin,
                 terminalClient: payload.terminalClient ?? existing.terminalClient,
                 terminalSessionHint: payload.terminalSessionHint ?? existing.terminalSessionHint,
                 status: .idle,
@@ -2256,6 +2267,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: payload.cwd.isEmpty ? existing.cwd : payload.cwd,
                 source: payload.source.isEmpty ? existing.source : payload.source,
                 conversationSummary: existing.conversationSummary,
+                clientOrigin: payload.clientOrigin ?? existing.clientOrigin,
                 terminalClient: payload.terminalClient ?? existing.terminalClient,
                 terminalSessionHint: payload.terminalSessionHint ?? existing.terminalSessionHint,
                 status: existing.status,
@@ -2272,6 +2284,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 for: payload.sessionID,
                 cwd: payload.cwd.isEmpty ? existing?.cwd ?? "" : payload.cwd
             ),
+            clientOrigin: payload.clientOrigin ?? existing?.clientOrigin,
             terminalClient: payload.terminalClient ?? existing?.terminalClient,
             terminalSessionHint: payload.terminalSessionHint ?? existing?.terminalSessionHint,
             status: incomingStatus,
@@ -2367,8 +2380,22 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             let timestampString = record["timestamp"] as? String
             let timestamp = timestampString.flatMap(historyTimestampFormatter.date(from:)) ?? .now
 
+            if type == "queue-operation",
+               let operation = record["operation"] as? String {
+                switch operation {
+                case "enqueue", "dequeue":
+                    return ClaudeProjectDerivedState(status: .running, lastEvent: operation, at: timestamp)
+                default:
+                    break
+                }
+            }
+
             if type == "assistant",
                let message = record["message"] as? [String: Any] {
+                if assistantMessageContainsThinkingBlock(message) {
+                    return ClaudeProjectDerivedState(status: .running, lastEvent: "assistant_thinking", at: timestamp)
+                }
+
                 let stopReason = message["stop_reason"] as? String
                 if stopReason == "tool_use" {
                     return ClaudeProjectDerivedState(status: .running, lastEvent: "tool_use", at: timestamp)
@@ -2420,6 +2447,16 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
 
         return nil
+    }
+
+    private func assistantMessageContainsThinkingBlock(_ message: [String: Any]) -> Bool {
+        guard let content = message["content"] as? [[String: Any]] else {
+            return false
+        }
+
+        return content.contains { item in
+            (item["type"] as? String) == "thinking"
+        }
     }
 
     private func fetchLatestClaudeInterruption(for sessionID: String, cwd: String) -> ClaudeProjectDerivedState? {
@@ -2670,6 +2707,24 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         projectState: ClaudeProjectDerivedState?,
         interruptionState: ClaudeProjectDerivedState?
     ) -> ClaudeTrackedSession {
+        if let projectState,
+           projectState.lastEvent == "user_prompt" {
+            if Date().timeIntervalSince(projectState.at) < claudePromptRunningWindow {
+                return ClaudeTrackedSession(
+                    rawSessionID: session.rawSessionID,
+                    cwd: session.cwd,
+                    source: session.source,
+                    conversationSummary: session.conversationSummary,
+                    clientOrigin: session.clientOrigin,
+                    terminalClient: session.terminalClient,
+                    terminalSessionHint: session.terminalSessionHint,
+                    status: .running,
+                    lastEvent: projectState.lastEvent,
+                    lastActivityAt: projectState.at
+                )
+            }
+        }
+
         if session.status == .running,
            session.lastEvent == "UserPromptSubmit",
            projectState?.lastEvent == "user_prompt" {
@@ -2683,6 +2738,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     cwd: session.cwd,
                     source: session.source,
                     conversationSummary: session.conversationSummary,
+                    clientOrigin: session.clientOrigin,
                     terminalClient: session.terminalClient,
                     terminalSessionHint: session.terminalSessionHint,
                     status: .idle,
@@ -2711,6 +2767,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     cwd: session.cwd,
                     source: session.source,
                     conversationSummary: session.conversationSummary,
+                    clientOrigin: session.clientOrigin,
                     terminalClient: session.terminalClient,
                     terminalSessionHint: session.terminalSessionHint,
                     status: .idle,
@@ -2728,6 +2785,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                clientOrigin: session.clientOrigin,
                 terminalClient: session.terminalClient,
                 terminalSessionHint: session.terminalSessionHint,
                 status: .idle,
@@ -2754,6 +2812,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                clientOrigin: session.clientOrigin,
                 terminalClient: session.terminalClient,
                 terminalSessionHint: session.terminalSessionHint,
                 status: .idle,
@@ -2768,6 +2827,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                clientOrigin: session.clientOrigin,
                 terminalClient: session.terminalClient,
                 terminalSessionHint: session.terminalSessionHint,
                 status: projectState.status,
@@ -2782,6 +2842,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 cwd: session.cwd,
                 source: session.source,
                 conversationSummary: session.conversationSummary,
+                clientOrigin: session.clientOrigin,
                 terminalClient: session.terminalClient,
                 terminalSessionHint: session.terminalSessionHint,
                 status: projectState.status,
@@ -2795,12 +2856,100 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             cwd: session.cwd,
             source: session.source,
             conversationSummary: session.conversationSummary,
+            clientOrigin: session.clientOrigin,
             terminalClient: session.terminalClient,
             terminalSessionHint: session.terminalSessionHint,
             status: session.status,
             lastEvent: session.lastEvent,
             lastActivityAt: session.lastActivityAt
         )
+    }
+
+    private func mergeDiscoveredClaudeSessions(into target: inout [String: ClaudeTrackedSession]) {
+        let discovered = discoverClaudeSessions()
+        guard !discovered.isEmpty else {
+            return
+        }
+
+        for record in discovered {
+            if let existing = target[record.sessionID] {
+                target[record.sessionID] = ClaudeTrackedSession(
+                    rawSessionID: existing.rawSessionID,
+                    cwd: existing.cwd.isEmpty ? record.cwd : existing.cwd,
+                    source: existing.source.isEmpty ? record.source : existing.source,
+                    conversationSummary: existing.conversationSummary,
+                    clientOrigin: existing.clientOrigin ?? record.clientOrigin,
+                    terminalClient: existing.terminalClient,
+                    terminalSessionHint: existing.terminalSessionHint,
+                    status: existing.status,
+                    lastEvent: existing.lastEvent,
+                    lastActivityAt: max(existing.lastActivityAt, record.lastActivityAt)
+                )
+            } else {
+                target[record.sessionID] = ClaudeTrackedSession(
+                    rawSessionID: record.sessionID,
+                    cwd: record.cwd,
+                    source: record.source,
+                    conversationSummary: fetchClaudeConversationSummary(for: record.sessionID, cwd: record.cwd),
+                    clientOrigin: record.clientOrigin,
+                    terminalClient: nil,
+                    terminalSessionHint: nil,
+                    status: .idle,
+                    lastEvent: "SessionDiscovered",
+                    lastActivityAt: record.lastActivityAt
+                )
+            }
+        }
+    }
+
+    private func discoverClaudeSessions() -> [ClaudeDiscoveredSession] {
+        guard let fileURLs = try? FileManager.default.contentsOfDirectory(
+            at: claudeSessionsRootURL,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+
+        return fileURLs.compactMap { fileURL in
+            guard fileURL.pathExtension == "json",
+                  let data = try? Data(contentsOf: fileURL),
+                  let record = try? JSONDecoder().decode(ClaudeSessionRecord.self, from: data) else {
+                return nil
+            }
+
+            let modifiedAt = (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let startedAt = record.startedAt.flatMap { Date(timeIntervalSince1970: TimeInterval($0) / 1000) } ?? modifiedAt
+            let lastActivityAt = max(startedAt, modifiedAt)
+
+            return ClaudeDiscoveredSession(
+                sessionID: record.sessionID,
+                cwd: record.cwd,
+                source: record.entrypoint ?? record.kind ?? "",
+                clientOrigin: clientOrigin(for: record.entrypoint),
+                lastActivityAt: lastActivityAt
+            )
+        }
+    }
+
+    private func clientOrigin(for entrypoint: String?) -> FocusClientOrigin {
+        switch entrypoint?.lowercased() {
+        case "claude-vscode":
+            return .claudeVSCode
+        default:
+            return .claudeCLI
+        }
+    }
+
+    private func focusDisplayName(for origin: FocusClientOrigin, terminalClient: TerminalClient?) -> String {
+        switch origin {
+        case .claudeVSCode:
+            return "VS Code Claude"
+        case .claudeCLI:
+            return "\(terminalClient?.displayName ?? TerminalClient.unknown.displayName) Claude"
+        default:
+            return origin.displayName
+        }
     }
 
     private func writeClaudeDebugLog(_ message: String) {
@@ -3083,6 +3232,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             session_id: payload.session_id || "default",
             cwd: payload.cwd || "",
             source: payload.source || payload.reason || "",
+            client_origin: detectClientOrigin(),
             terminal_client: detectTerminalClient(),
             terminal_session_hint: detectTerminalSessionHint()
           });
@@ -3250,6 +3400,20 @@ private final class ClaudeHookBridge: @unchecked Sendable {
           if (termProgram === "Alacritty" || typeof env.ALACRITTY_SOCKET === "string") return "alacritty";
 
           return "";
+        }
+
+        function detectClientOrigin() {
+          const env = process.env;
+
+          if (typeof env.CURSOR_TRACE_ID === "string" || typeof env.CURSOR_AGENT === "string") {
+            return "claudeVSCode";
+          }
+
+          if (typeof env.VSCODE_PID === "string" || typeof env.VSCODE_IPC_HOOK === "string") {
+            return "claudeVSCode";
+          }
+
+          return detectTerminalClient() ? "claudeCLI" : "";
         }
 
         function detectTerminalSessionHint() {
@@ -3885,6 +4049,7 @@ private struct ClaudeTrackedSession {
     let cwd: String
     let source: String
     let conversationSummary: String?
+    let clientOrigin: FocusClientOrigin?
     let terminalClient: TerminalClient?
     let terminalSessionHint: String?
     let status: Status
@@ -4000,6 +4165,7 @@ private struct ClaudeHookEventPayload: Decodable {
     let sessionID: String
     let cwd: String
     let source: String
+    let clientOrigin: FocusClientOrigin?
     let terminalClient: TerminalClient?
     let terminalSessionHint: String?
 
@@ -4009,9 +4175,34 @@ private struct ClaudeHookEventPayload: Decodable {
         case sessionID = "session_id"
         case cwd
         case source
+        case clientOrigin = "client_origin"
         case terminalClient = "terminal_client"
         case terminalSessionHint = "terminal_session_hint"
     }
+}
+
+private struct ClaudeSessionRecord: Decodable {
+    let sessionID: String
+    let cwd: String
+    let startedAt: Int64?
+    let kind: String?
+    let entrypoint: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "sessionId"
+        case cwd
+        case startedAt
+        case kind
+        case entrypoint
+    }
+}
+
+private struct ClaudeDiscoveredSession {
+    let sessionID: String
+    let cwd: String
+    let source: String
+    let clientOrigin: FocusClientOrigin
+    let lastActivityAt: Date
 }
 
 private struct ClaudeHookPermissionPayload: Decodable {
