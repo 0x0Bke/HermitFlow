@@ -171,134 +171,139 @@ private struct SettingsPanelView: View {
     @State private var claudeUsageCommandLastSubmitted = ""
     @State private var claudeSettingsInput = ""
     @State private var claudeSettingsLastSubmitted = ""
+    private let panelContentWidth: CGFloat = 780
 
     var body: some View {
         let authRows = providerAuthRows()
 
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                settingsTile(title: "Sound") {
-                    Toggle("", isOn: soundMutedBinding)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .scaleEffect(0.72)
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 12) {
+                    settingsTile(title: "Sound") {
+                        Toggle("", isOn: soundMutedBinding)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .scaleEffect(0.72)
+                    }
+
+                    settingsTile(title: "Screen") {
+                        Menu {
+                            ForEach(screenOptions()) { option in
+                                Button(option.title) {
+                                    option.action()
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: currentScreenTitle(), width: 148)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+
+                    settingsTile(title: "Logo") {
+                        Menu {
+                            ForEach(availableLogos, id: \.rawValue) { logo in
+                                Button(logo.menuTitle) {
+                                    store.selectLogo(logo)
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
                 }
 
-                settingsTile(title: "Screen") {
+                settingsTile(title: "approval-focus") {
                     Menu {
-                        ForEach(screenOptions()) { option in
-                            Button(option.title) {
-                                option.action()
+                        ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
+                            Button(option.menuTitle) {
+                                onApprovalDefaultFocusSelected(option)
                             }
                         }
                     } label: {
-                        pickerCapsule(title: currentScreenTitle(), width: 148)
+                        pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 118)
                     }
                     .menuStyle(.borderlessButton)
                 }
 
-                settingsTile(title: "Logo") {
-                    Menu {
-                        ForEach(availableLogos, id: \.rawValue) { logo in
-                            Button(logo.menuTitle) {
-                                store.selectLogo(logo)
+                settingsTile(title: "usage-auth", minHeight: 176) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ForEach(authRows) { row in
+                                ProviderAuthEnvKeyFieldRow(
+                                    row: row,
+                                    refreshToken: providerAuthRefreshToken(),
+                                    onSubmit: onProviderAuthEnvKeySubmit
+                                )
                             }
                         }
-                    } label: {
-                        pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
+                        .padding(12)
                     }
-                    .menuStyle(.borderlessButton)
+                    .frame(maxWidth: .infinity, minHeight: 148, maxHeight: 188, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.045))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                    )
                 }
-            }
 
-            settingsTile(title: "approval-focus") {
-                Menu {
-                    ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
-                        Button(option.menuTitle) {
-                            onApprovalDefaultFocusSelected(option)
+                settingsTile(title: "usage-cmd", minHeight: 176) {
+                    ZStack(alignment: .topLeading) {
+                        if claudeUsageCommandInput.isEmpty {
+                            Text("{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.22))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
                         }
-                    }
-                } label: {
-                    pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 118)
-                }
-                .menuStyle(.borderlessButton)
-            }
 
-            settingsTile(title: "usage-auth", minHeight: 176) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(authRows) { row in
-                            ProviderAuthEnvKeyFieldRow(
-                                row: row,
-                                refreshToken: providerAuthRefreshToken(),
-                                onSubmit: onProviderAuthEnvKeySubmit
-                            )
+                        PlainJSONEditor(text: $claudeUsageCommandInput)
+                            .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                            .onChange(of: claudeUsageCommandInput) { _, _ in
+                                scheduleClaudeUsageCommandSubmit()
+                            }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.045))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                    )
+                }
+
+                settingsTile(title: "cc-paths", minHeight: 176) {
+                    ZStack(alignment: .topLeading) {
+                        if claudeSettingsInput.isEmpty {
+                            Text("{\n  \"paths\": []\n}")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.22))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
                         }
+
+                        PlainJSONEditor(text: $claudeSettingsInput)
+                            .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                            .onChange(of: claudeSettingsInput) { _, _ in
+                                scheduleClaudeSettingsSubmit()
+                            }
                     }
-                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.045))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.07), lineWidth: 1)
+                    )
                 }
-                .frame(maxWidth: .infinity, minHeight: 148, maxHeight: 188, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
             }
-
-            settingsTile(title: "usage-cmd", minHeight: 176) {
-                ZStack(alignment: .topLeading) {
-                    if claudeUsageCommandInput.isEmpty {
-                        Text("{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.22))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                    }
-
-                    PlainJSONEditor(text: $claudeUsageCommandInput)
-                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
-                        .onChange(of: claudeUsageCommandInput) { _, _ in
-                            scheduleClaudeUsageCommandSubmit()
-                        }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
-            }
-
-            settingsTile(title: "cc-paths", minHeight: 176) {
-                ZStack(alignment: .topLeading) {
-                    if claudeSettingsInput.isEmpty {
-                        Text("{\n  \"paths\": []\n}")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.22))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                    }
-
-                    PlainJSONEditor(text: $claudeSettingsInput)
-                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
-                        .onChange(of: claudeSettingsInput) { _, _ in
-                            scheduleClaudeSettingsSubmit()
-                        }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
-            }
+            .padding(14)
+            .frame(width: panelContentWidth, alignment: .leading)
         }
         .onAppear {
             claudeUsageCommandInput = claudeUsageCommandJSONText()
@@ -325,8 +330,7 @@ private struct SettingsPanelView: View {
             submitClaudeUsageCommand()
             submitClaudeSettings()
         }
-        .padding(14)
-        .frame(width: 780, alignment: .leading)
+        .frame(width: panelContentWidth, alignment: .leading)
         .background(
             ZStack {
                 Color(red: 0.055, green: 0.058, blue: 0.068)
@@ -619,7 +623,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 812, height: 438),
+            contentRect: NSRect(x: 0, y: 0, width: 812, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -628,7 +632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         panel.title = "Settings"
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.isReleasedWhenClosed = false
-        panel.titlebarAppearsTransparent = true
+        panel.titlebarAppearsTransparent = false
         panel.isMovableByWindowBackground = true
         panel.level = .normal
         panel.collectionBehavior = []
