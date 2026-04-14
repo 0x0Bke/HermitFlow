@@ -970,13 +970,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let leftAuxArea = screen.auxiliaryTopLeftArea ?? .zero
         let rightAuxArea = screen.auxiliaryTopRightArea ?? .zero
         let displayID = screen.displayID
+        let backingScaleFactor = max(screen.backingScaleFactor, 1)
+        let renderedScreenWidth = screen.frame.width * backingScaleFactor
         let isExternalDisplay = displayID.map { !isBuiltInDisplay($0) } ?? false
         let hasCameraHousing = !leftAuxArea.isEmpty || !rightAuxArea.isEmpty
         let cameraHousingWidth = hasCameraHousing
             ? max(screen.frame.width - leftAuxArea.width - rightAuxArea.width, 0)
             : 0
         let cameraHousingHeight = max(leftAuxArea.height, rightAuxArea.height, screen.safeAreaInsets.top)
-        store.updateDisplayLayout(isExternal: isExternalDisplay)
+        store.updateDisplayLayout(isExternal: isExternalDisplay, screenWidth: renderedScreenWidth)
         store.syncCameraHousingMetrics(
             width: cameraHousingWidth,
             height: cameraHousingHeight > 0 ? cameraHousingHeight : menuBarHeight

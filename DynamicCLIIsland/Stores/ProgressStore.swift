@@ -214,8 +214,8 @@ final class ProgressStore: ObservableObject {
         appStore.syncCameraHousingMetrics(width: width, height: height)
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        appStore.updateDisplayLayout(isExternal: isExternal)
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        appStore.updateDisplayLayout(isExternal: isExternal, screenWidth: screenWidth)
     }
 
     func updateCameraHousingWidth(_ width: CGFloat) {

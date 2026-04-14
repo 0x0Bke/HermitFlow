@@ -53,6 +53,7 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var compactHeight: CGFloat = 37
     @Published private(set) var cameraHousingWidth: CGFloat = 0
     @Published private(set) var cameraHousingHeight: CGFloat = 37
+    @Published private(set) var activeScreenWidth: CGFloat = 0
     @Published private(set) var usesExternalDisplayLayout = false
     @Published private(set) var collapsedInlineApprovalID: String?
     @Published private(set) var approvalPreviewEnabled = false
@@ -62,6 +63,7 @@ final class PresentationStore: ObservableObject {
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
+    private let inlineApprovalIslandFixedWidth: CGFloat = 560
     private let externalDisplayCompactWidthMultiplier: CGFloat = 1.6
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
@@ -124,12 +126,15 @@ final class PresentationStore: ObservableObject {
     }
 
     private var islandWidth: CGFloat {
-        let baseWidth: CGFloat
         if isInlineApprovalExpanded {
-            baseWidth = max(364, cameraGapWidth + 256)
-        } else {
-            baseWidth = max(228, cameraGapWidth + 140)
+            return inlineApprovalIslandFixedWidth
         }
+
+        let baseWidth = max(
+            228,
+            cameraGapWidth + 140,
+            proportionalCompactWidth(for: activeScreenWidth, ratio: 0.24)
+        )
 
         return scaledWidth(baseWidth, for: .island)
     }
@@ -147,7 +152,19 @@ final class PresentationStore: ObservableObject {
     }
 
     private var expandedWidth: CGFloat {
-        scaledWidth(max(420, cameraGapWidth + 279), for: .panel)
+        let minimumBaseWidth: CGFloat = currentApprovalRequest == nil ? 720 : 860
+        let proportionalRatio: CGFloat = currentApprovalRequest == nil ? 0.42 : 0.5
+        let baseWidth = max(
+            560,
+            cameraGapWidth + (currentApprovalRequest == nil ? 279 : 380),
+            proportionalPanelWidth(
+                for: activeScreenWidth,
+                ratio: proportionalRatio,
+                minimumBaseWidth: minimumBaseWidth
+            )
+        )
+
+        return scaledWidth(baseWidth, for: .panel)
     }
 
     private var panelHeight: CGFloat {
@@ -295,12 +312,14 @@ final class PresentationStore: ObservableObject {
         notifyWindowSizeChange()
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        guard usesExternalDisplayLayout != isExternal else {
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        let normalizedScreenWidth = max(screenWidth.rounded(.up), 0)
+        guard usesExternalDisplayLayout != isExternal || abs(activeScreenWidth - normalizedScreenWidth) > 0.5 else {
             return
         }
 
         usesExternalDisplayLayout = isExternal
+        activeScreenWidth = normalizedScreenWidth
         notifyWindowSizeChange()
     }
 
@@ -393,6 +412,27 @@ final class PresentationStore: ObservableObject {
         }
 
         return (width * multiplier).rounded(.up)
+    }
+
+    private func proportionalCompactWidth(for screenWidth: CGFloat, ratio: CGFloat) -> CGFloat {
+        guard usesExternalDisplayLayout, cameraHousingWidth <= 0, screenWidth > 0 else {
+            return 0
+        }
+
+        return (screenWidth * ratio) / externalDisplayCompactWidthMultiplier
+    }
+
+    private func proportionalPanelWidth(
+        for screenWidth: CGFloat,
+        ratio: CGFloat,
+        minimumBaseWidth: CGFloat
+    ) -> CGFloat {
+        guard usesExternalDisplayLayout, cameraHousingWidth <= 0, screenWidth > 0 else {
+            return 0
+        }
+
+        let proportionalBaseWidth = (screenWidth * ratio) / externalDisplayPanelWidthMultiplier
+        return max(minimumBaseWidth, proportionalBaseWidth)
     }
 
     private func suppressRunningGlyphAnimation(for duration: TimeInterval) {

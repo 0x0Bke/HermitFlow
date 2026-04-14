@@ -224,8 +224,8 @@ final class AppStore: ObservableObject {
         presentationStore.syncCameraHousingMetrics(width: width, height: height)
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        presentationStore.updateDisplayLayout(isExternal: isExternal)
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        presentationStore.updateDisplayLayout(isExternal: isExternal, screenWidth: screenWidth)
     }
 
     func handlePanelHover(_ isHovering: Bool) {
