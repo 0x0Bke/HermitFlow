@@ -79,6 +79,7 @@ final class ProgressStore: ObservableObject {
     var accessibilityPromptDismissed: Bool { appStore.accessibilityPromptDismissed }
     var runningGlyphAnimationSuppressed: Bool { appStore.runningGlyphAnimationSuppressed }
     var isSoundMuted: Bool { appStore.isSoundMuted }
+    var customNotificationSoundPath: String? { appStore.customNotificationSoundPath }
     var usageSnapshots: [ProviderUsageSnapshot] { appStore.usageSnapshots }
     var usageProviderState: UsageProviderState { appStore.usageProviderState }
     var hasUsageContent: Bool { claudeUsageSnapshot?.isEmpty == false || codexUsageSnapshot?.isEmpty == false }
@@ -161,6 +162,10 @@ final class ProgressStore: ObservableObject {
 
     func toggleSoundMuted() {
         appStore.toggleSoundMuted()
+    }
+
+    func setCustomNotificationSoundPath(_ path: String?) {
+        appStore.setCustomNotificationSoundPath(path)
     }
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {

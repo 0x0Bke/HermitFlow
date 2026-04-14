@@ -60,6 +60,7 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var inlineApprovalCommandExpanded = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
+    @Published private(set) var customNotificationSoundPath: String?
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
 
     private let compactHeightOverscan: CGFloat = 2.5
@@ -70,6 +71,8 @@ final class PresentationStore: ObservableObject {
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
     private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
+    private let customNotificationSoundPathDefaultsKey = NotificationSoundPlayer.customSoundPathDefaultsKey
+    private let customNotificationSoundBookmarkDefaultsKey = NotificationSoundPlayer.customSoundBookmarkDefaultsKey
     private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
 
     // TODO: These timing fields are still coupled to legacy AppDelegate behaviors.
@@ -92,6 +95,9 @@ final class PresentationStore: ObservableObject {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
         isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
+        customNotificationSoundPath = Self.normalizedCustomSoundPath(
+            UserDefaults.standard.string(forKey: customNotificationSoundPathDefaultsKey)
+        )
         let storedApprovalDefaultFocus = UserDefaults.standard.string(forKey: approvalDefaultFocusDefaultsKey)
         approvalDefaultFocus = ApprovalDefaultFocusOption(rawValue: storedApprovalDefaultFocus ?? "") ?? .accept
     }
@@ -360,6 +366,23 @@ final class PresentationStore: ObservableObject {
         UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
     }
 
+    func setCustomNotificationSoundPath(_ path: String?) {
+        let normalizedPath = Self.normalizedCustomSoundPath(path)
+        guard customNotificationSoundPath != normalizedPath else {
+            return
+        }
+
+        customNotificationSoundPath = normalizedPath
+
+        if let normalizedPath {
+            UserDefaults.standard.set(normalizedPath, forKey: customNotificationSoundPathDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: customNotificationSoundPathDefaultsKey)
+            UserDefaults.standard.removeObject(forKey: customNotificationSoundBookmarkDefaultsKey)
+            try? FileManager.default.removeItem(at: FilePaths.customNotificationSound)
+        }
+    }
+
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         guard approvalDefaultFocus != option else {
             return
@@ -415,6 +438,14 @@ final class PresentationStore: ObservableObject {
 
         displayMode = mode
         notifyWindowSizeChange(animation: panelModeTransitionAnimation(from: previousMode, to: mode))
+    }
+
+    private static func normalizedCustomSoundPath(_ path: String?) -> String? {
+        guard let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmedPath.isEmpty else {
+            return nil
+        }
+
+        return trimmedPath
     }
 
     private func scaledWidth(_ width: CGFloat, for mode: DisplayMode) -> CGFloat {

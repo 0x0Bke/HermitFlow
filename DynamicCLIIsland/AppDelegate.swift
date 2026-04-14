@@ -4,6 +4,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 private final class IslandKeyboardWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -164,6 +165,11 @@ private struct SettingsPanelView: View {
     let onClaudeSettingsJSONSubmit: (String) -> Void
     let approvalDefaultFocus: () -> ApprovalDefaultFocusOption
     let onApprovalDefaultFocusSelected: (ApprovalDefaultFocusOption) -> Void
+    let currentNotificationSoundTitle: () -> String
+    let currentNotificationSoundPath: () -> String?
+    let onChooseNotificationSound: () -> Void
+    let onClearNotificationSound: () -> Void
+    let onPreviewNotificationSound: () -> Void
     let providerAuthRows: () -> [ProviderAuthEnvKeyRow]
     let providerAuthRefreshToken: () -> Int
     let onProviderAuthEnvKeySubmit: (String, String) -> Void
@@ -180,10 +186,33 @@ private struct SettingsPanelView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .center, spacing: 12) {
                     settingsTile(title: "Sound") {
-                        Toggle("", isOn: soundMutedBinding)
-                            .toggleStyle(.switch)
-                            .labelsHidden()
-                            .scaleEffect(0.72)
+                        HStack(alignment: .center, spacing: 10) {
+                            Toggle("", isOn: soundMutedBinding)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
+                                .scaleEffect(0.72)
+
+                            Menu {
+                                Button("选择本地 mp3…") {
+                                    onChooseNotificationSound()
+                                }
+
+                                Button("试听") {
+                                    onPreviewNotificationSound()
+                                }
+
+                                if currentNotificationSoundPath() != nil {
+                                    Divider()
+
+                                    Button("恢复默认提示音") {
+                                        onClearNotificationSound()
+                                    }
+                                }
+                            } label: {
+                                pickerCapsule(title: currentNotificationSoundTitle(), width: 220)
+                            }
+                            .menuStyle(.borderlessButton)
+                        }
                     }
 
                     settingsTile(title: "Screen") {
@@ -675,6 +704,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             onApprovalDefaultFocusSelected: { [weak self] option in
                 self?.store.setApprovalDefaultFocus(option)
             },
+            currentNotificationSoundTitle: { [weak self] in
+                self?.currentNotificationSoundTitle ?? "默认提示音"
+            },
+            currentNotificationSoundPath: { [weak self] in
+                self?.store.customNotificationSoundPath
+            },
+            onChooseNotificationSound: { [weak self] in
+                self?.chooseCustomNotificationSound()
+            },
+            onClearNotificationSound: { [weak self] in
+                self?.store.setCustomNotificationSoundPath(nil)
+            },
+            onPreviewNotificationSound: { [weak self] in
+                self?.environment.appStore.runtimeStore.notificationSoundPlayer.playNotificationPing()
+            },
             providerAuthRows: { [weak self] in
                 self?.claudeProviderAuthRows ?? []
             },
@@ -689,6 +733,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func closeSettingsPanel() {
         settingsPanel?.close()
+    }
+
+    private var currentNotificationSoundTitle: String {
+        guard let path = store.customNotificationSoundPath, !path.isEmpty else {
+            return "默认提示音"
+        }
+
+        return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    private func chooseCustomNotificationSound() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.allowedContentTypes = [.mp3]
+        panel.title = "选择自定义提示音"
+        panel.message = "选择一个本地 mp3 文件作为提示音。"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            importCustomNotificationSound(from: url)
+        }
+    }
+
+    private func importCustomNotificationSound(from sourceURL: URL) {
+        do {
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(
+                at: FilePaths.notificationSoundsDirectory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            let destinationURL = FilePaths.customNotificationSound
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+
+            UserDefaults.standard.removeObject(forKey: NotificationSoundPlayer.customSoundBookmarkDefaultsKey)
+            store.setCustomNotificationSoundPath(destinationURL.path)
+        } catch {
+            #if DEBUG
+            print("Failed to import notification sound: \(error)")
+            #endif
+        }
     }
 
     private func positionSettingsPanel(_ panel: NSWindow) {

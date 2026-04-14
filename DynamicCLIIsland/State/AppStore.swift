@@ -77,6 +77,7 @@ final class AppStore: ObservableObject {
     var accessibilityPromptDismissed: Bool { runtimeStore.accessibilityPromptDismissed }
     var runningGlyphAnimationSuppressed: Bool { presentationStore.runningGlyphAnimationSuppressed }
     var isSoundMuted: Bool { presentationStore.isSoundMuted }
+    var customNotificationSoundPath: String? { presentationStore.customNotificationSoundPath }
     var usageSnapshots: [ProviderUsageSnapshot] { runtimeStore.usageSnapshots }
     var usageProviderState: UsageProviderState { runtimeStore.usageProviderState }
     var claudeUsageSnapshot: ClaudeUsageSnapshot? { runtimeStore.claudeUsageSnapshot }
@@ -207,6 +208,10 @@ final class AppStore: ObservableObject {
 
     func toggleSoundMuted() {
         presentationStore.toggleSoundMuted()
+    }
+
+    func setCustomNotificationSoundPath(_ path: String?) {
+        presentationStore.setCustomNotificationSoundPath(path)
     }
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
