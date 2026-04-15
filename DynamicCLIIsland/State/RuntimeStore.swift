@@ -644,6 +644,10 @@ final class RuntimeStore: ObservableObject {
         usageQueue.async { [weak self] in
             let claudeSnapshot = includeClaude ? claudeUsageSource.fetchUsageSnapshot() : existingState.claude
             let codexSnapshot = includeCodex ? codexUsageSource.fetchUsageSnapshot() : existingState.codex
+            Logger.log(
+                "Usage refresh completed. includeClaude=\(includeClaude) claudeProvider=\(claudeSnapshot?.providerID ?? "nil") claudeDisplay=\(claudeSnapshot?.providerDisplayName ?? "nil") includeCodex=\(includeCodex).",
+                category: .store
+            )
             let providerState = UsageProviderState(
                 claude: claudeSnapshot,
                 codex: codexSnapshot
@@ -836,6 +840,7 @@ final class RuntimeStore: ObservableObject {
         return ApprovalRequest(
             id: "preview-approval",
             commandSummary: "open -a Calculator",
+            commandText: "open -a Calculator",
             rationale: "Preview approval UI in island mode without waiting for a real pending request.",
             focusTarget: previewTarget,
             createdAt: .now,

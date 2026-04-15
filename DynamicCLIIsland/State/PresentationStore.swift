@@ -53,19 +53,26 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var compactHeight: CGFloat = 37
     @Published private(set) var cameraHousingWidth: CGFloat = 0
     @Published private(set) var cameraHousingHeight: CGFloat = 37
+    @Published private(set) var activeScreenWidth: CGFloat = 0
     @Published private(set) var usesExternalDisplayLayout = false
     @Published private(set) var collapsedInlineApprovalID: String?
     @Published private(set) var approvalPreviewEnabled = false
+    @Published private(set) var inlineApprovalCommandExpanded = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
+    @Published private(set) var customNotificationSoundPath: String?
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
+    private let inlineApprovalExpandedHeight: CGFloat = 460
+    private let inlineApprovalIslandFixedWidth: CGFloat = 560
     private let externalDisplayCompactWidthMultiplier: CGFloat = 1.6
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
     private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
+    private let customNotificationSoundPathDefaultsKey = NotificationSoundPlayer.customSoundPathDefaultsKey
+    private let customNotificationSoundBookmarkDefaultsKey = NotificationSoundPlayer.customSoundBookmarkDefaultsKey
     private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
 
     // TODO: These timing fields are still coupled to legacy AppDelegate behaviors.
@@ -88,6 +95,9 @@ final class PresentationStore: ObservableObject {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
         isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
+        customNotificationSoundPath = Self.normalizedCustomSoundPath(
+            UserDefaults.standard.string(forKey: customNotificationSoundPathDefaultsKey)
+        )
         let storedApprovalDefaultFocus = UserDefaults.standard.string(forKey: approvalDefaultFocusDefaultsKey)
         approvalDefaultFocus = ApprovalDefaultFocusOption(rawValue: storedApprovalDefaultFocus ?? "") ?? .accept
     }
@@ -124,19 +134,23 @@ final class PresentationStore: ObservableObject {
     }
 
     private var islandWidth: CGFloat {
-        let baseWidth: CGFloat
         if isInlineApprovalExpanded {
-            baseWidth = max(364, cameraGapWidth + 256)
-        } else {
-            baseWidth = max(228, cameraGapWidth + 140)
+            return inlineApprovalIslandFixedWidth
         }
+
+        let baseWidth = max(
+            228,
+            cameraGapWidth + 140,
+            proportionalCompactWidth(for: activeScreenWidth, ratio: 0.24)
+        )
 
         return scaledWidth(baseWidth, for: .island)
     }
 
     private var islandHeight: CGFloat {
         if isInlineApprovalExpanded {
-            return max(compactHeight, inlineApprovalMinimumHeight)
+            let minimumHeight = inlineApprovalCommandExpanded ? inlineApprovalExpandedHeight : inlineApprovalMinimumHeight
+            return max(compactHeight, minimumHeight)
         }
 
         return compactHeight
@@ -147,7 +161,19 @@ final class PresentationStore: ObservableObject {
     }
 
     private var expandedWidth: CGFloat {
-        scaledWidth(max(420, cameraGapWidth + 279), for: .panel)
+        let minimumBaseWidth: CGFloat = currentApprovalRequest == nil ? 720 : 860
+        let proportionalRatio: CGFloat = currentApprovalRequest == nil ? 0.42 : 0.5
+        let baseWidth = max(
+            560,
+            cameraGapWidth + (currentApprovalRequest == nil ? 279 : 380),
+            proportionalPanelWidth(
+                for: activeScreenWidth,
+                ratio: proportionalRatio,
+                minimumBaseWidth: minimumBaseWidth
+            )
+        )
+
+        return scaledWidth(baseWidth, for: .panel)
     }
 
     private var panelHeight: CGFloat {
@@ -295,12 +321,14 @@ final class PresentationStore: ObservableObject {
         notifyWindowSizeChange()
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        guard usesExternalDisplayLayout != isExternal else {
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        let normalizedScreenWidth = max(screenWidth.rounded(.up), 0)
+        guard usesExternalDisplayLayout != isExternal || abs(activeScreenWidth - normalizedScreenWidth) > 0.5 else {
             return
         }
 
         usesExternalDisplayLayout = isExternal
+        activeScreenWidth = normalizedScreenWidth
         notifyWindowSizeChange()
     }
 
@@ -338,6 +366,23 @@ final class PresentationStore: ObservableObject {
         UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
     }
 
+    func setCustomNotificationSoundPath(_ path: String?) {
+        let normalizedPath = Self.normalizedCustomSoundPath(path)
+        guard customNotificationSoundPath != normalizedPath else {
+            return
+        }
+
+        customNotificationSoundPath = normalizedPath
+
+        if let normalizedPath {
+            UserDefaults.standard.set(normalizedPath, forKey: customNotificationSoundPathDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: customNotificationSoundPathDefaultsKey)
+            UserDefaults.standard.removeObject(forKey: customNotificationSoundBookmarkDefaultsKey)
+            try? FileManager.default.removeItem(at: FilePaths.customNotificationSound)
+        }
+    }
+
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         guard approvalDefaultFocus != option else {
             return
@@ -352,6 +397,9 @@ final class PresentationStore: ObservableObject {
         sessions: [AgentSessionSnapshot],
         usageCardCount: Int = 0
     ) {
+        if approvalRequest?.id != currentApprovalRequest?.id || approvalRequest == nil {
+            inlineApprovalCommandExpanded = false
+        }
         currentApprovalRequest = approvalRequest
         currentSessions = sessions
         currentUsageCardCount = usageCardCount
@@ -359,6 +407,19 @@ final class PresentationStore: ObservableObject {
 
     func resetCollapsedInlineApproval() {
         collapsedInlineApprovalID = nil
+    }
+
+    func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
+        guard inlineApprovalCommandExpanded != expanded else {
+            return
+        }
+
+        inlineApprovalCommandExpanded = expanded
+        guard isInlineApprovalExpanded else {
+            return
+        }
+
+        notifyWindowSizeChange()
     }
 
     private func setDisplayMode(_ mode: DisplayMode) {
@@ -379,6 +440,14 @@ final class PresentationStore: ObservableObject {
         notifyWindowSizeChange(animation: panelModeTransitionAnimation(from: previousMode, to: mode))
     }
 
+    private static func normalizedCustomSoundPath(_ path: String?) -> String? {
+        guard let trimmedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmedPath.isEmpty else {
+            return nil
+        }
+
+        return trimmedPath
+    }
+
     private func scaledWidth(_ width: CGFloat, for mode: DisplayMode) -> CGFloat {
         let multiplier: CGFloat
         if usesExternalDisplayLayout {
@@ -393,6 +462,27 @@ final class PresentationStore: ObservableObject {
         }
 
         return (width * multiplier).rounded(.up)
+    }
+
+    private func proportionalCompactWidth(for screenWidth: CGFloat, ratio: CGFloat) -> CGFloat {
+        guard usesExternalDisplayLayout, cameraHousingWidth <= 0, screenWidth > 0 else {
+            return 0
+        }
+
+        return (screenWidth * ratio) / externalDisplayCompactWidthMultiplier
+    }
+
+    private func proportionalPanelWidth(
+        for screenWidth: CGFloat,
+        ratio: CGFloat,
+        minimumBaseWidth: CGFloat
+    ) -> CGFloat {
+        guard usesExternalDisplayLayout, cameraHousingWidth <= 0, screenWidth > 0 else {
+            return 0
+        }
+
+        let proportionalBaseWidth = (screenWidth * ratio) / externalDisplayPanelWidthMultiplier
+        return max(minimumBaseWidth, proportionalBaseWidth)
     }
 
     private func suppressRunningGlyphAnimation(for duration: TimeInterval) {

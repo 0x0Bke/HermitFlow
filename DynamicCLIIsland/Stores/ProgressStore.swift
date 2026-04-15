@@ -73,11 +73,13 @@ final class ProgressStore: ObservableObject {
     var approvalDiagnosticMessage: String? { appStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { appStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { appStore.approvalDefaultFocus }
+    var inlineApprovalCommandExpanded: Bool { appStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { appStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { appStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { appStore.accessibilityPromptDismissed }
     var runningGlyphAnimationSuppressed: Bool { appStore.runningGlyphAnimationSuppressed }
     var isSoundMuted: Bool { appStore.isSoundMuted }
+    var customNotificationSoundPath: String? { appStore.customNotificationSoundPath }
     var usageSnapshots: [ProviderUsageSnapshot] { appStore.usageSnapshots }
     var usageProviderState: UsageProviderState { appStore.usageProviderState }
     var hasUsageContent: Bool { claudeUsageSnapshot?.isEmpty == false || codexUsageSnapshot?.isEmpty == false }
@@ -162,8 +164,16 @@ final class ProgressStore: ObservableObject {
         appStore.toggleSoundMuted()
     }
 
+    func setCustomNotificationSoundPath(_ path: String?) {
+        appStore.setCustomNotificationSoundPath(path)
+    }
+
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         appStore.setApprovalDefaultFocus(option)
+    }
+
+    func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
+        appStore.updateInlineApprovalCommandExpanded(expanded)
     }
 
     func openSettingsPanel() {
@@ -214,8 +224,8 @@ final class ProgressStore: ObservableObject {
         appStore.syncCameraHousingMetrics(width: width, height: height)
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        appStore.updateDisplayLayout(isExternal: isExternal)
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        appStore.updateDisplayLayout(isExternal: isExternal, screenWidth: screenWidth)
     }
 
     func updateCameraHousingWidth(_ width: CGFloat) {

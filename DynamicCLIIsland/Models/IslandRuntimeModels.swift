@@ -89,7 +89,7 @@ enum SessionOrigin: String, Hashable {
     }
 }
 
-enum FocusClientOrigin: String, Hashable {
+enum FocusClientOrigin: String, Hashable, Codable {
     case claudeCLI
     case claudeVSCode
     case codexDesktop
@@ -162,6 +162,7 @@ struct FocusTarget: Hashable {
 struct ApprovalRequest: Identifiable, Hashable {
     let id: String
     let commandSummary: String
+    let commandText: String
     let rationale: String?
     let focusTarget: FocusTarget?
     let createdAt: Date

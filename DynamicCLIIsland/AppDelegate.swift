@@ -4,6 +4,7 @@ import CoreGraphics
 import Darwin
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 private final class IslandKeyboardWindow: NSWindow {
     override var canBecomeKey: Bool { true }
@@ -96,8 +97,26 @@ private struct ProviderAuthEnvKeyFieldRow: View {
                 .foregroundStyle(.white.opacity(0.82))
                 .frame(width: 112, alignment: .leading)
 
-            TextField("ANTHROPIC_AUTH_TOKEN", text: $input)
-                .textFieldStyle(.roundedBorder)
+            TextField(
+                "",
+                text: $input,
+                prompt: Text("ANTHROPIC_AUTH_TOKEN")
+                    .foregroundStyle(.white.opacity(0.24))
+            )
+            .textFieldStyle(.plain)
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.88))
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.white.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            )
         }
         .onAppear {
             syncFromRow(force: true)
@@ -164,6 +183,11 @@ private struct SettingsPanelView: View {
     let onClaudeSettingsJSONSubmit: (String) -> Void
     let approvalDefaultFocus: () -> ApprovalDefaultFocusOption
     let onApprovalDefaultFocusSelected: (ApprovalDefaultFocusOption) -> Void
+    let currentNotificationSoundTitle: () -> String
+    let currentNotificationSoundPath: () -> String?
+    let onChooseNotificationSound: () -> Void
+    let onClearNotificationSound: () -> Void
+    let onPreviewNotificationSound: () -> Void
     let providerAuthRows: () -> [ProviderAuthEnvKeyRow]
     let providerAuthRefreshToken: () -> Int
     let onProviderAuthEnvKeySubmit: (String, String) -> Void
@@ -171,134 +195,51 @@ private struct SettingsPanelView: View {
     @State private var claudeUsageCommandLastSubmitted = ""
     @State private var claudeSettingsInput = ""
     @State private var claudeSettingsLastSubmitted = ""
+    private let panelContentWidth: CGFloat = 780
+    private let sectionCornerRadius: CGFloat = 18
 
     var body: some View {
         let authRows = providerAuthRows()
 
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                settingsTile(title: "Sound") {
-                    Toggle("", isOn: soundMutedBinding)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .scaleEffect(0.72)
-                }
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 14) {
+                quickSettingsSection
 
-                settingsTile(title: "Screen") {
-                    Menu {
-                        ForEach(screenOptions()) { option in
-                            Button(option.title) {
-                                option.action()
+                settingsSection(title: "usage-auth", systemImage: "key.horizontal") {
+                    insetSurface(minHeight: 148, maxHeight: 188) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(authRows) { row in
+                                    ProviderAuthEnvKeyFieldRow(
+                                        row: row,
+                                        refreshToken: providerAuthRefreshToken(),
+                                        onSubmit: onProviderAuthEnvKeySubmit
+                                    )
+                                }
                             }
+                            .padding(12)
                         }
-                    } label: {
-                        pickerCapsule(title: currentScreenTitle(), width: 148)
                     }
-                    .menuStyle(.borderlessButton)
                 }
 
-                settingsTile(title: "Logo") {
-                    Menu {
-                        ForEach(availableLogos, id: \.rawValue) { logo in
-                            Button(logo.menuTitle) {
-                                store.selectLogo(logo)
-                            }
-                        }
-                    } label: {
-                        pickerCapsule(title: store.selectedLogo.menuTitle, width: 118)
-                    }
-                    .menuStyle(.borderlessButton)
+                settingsSection(title: "usage-cmd", systemImage: "terminal") {
+                    jsonEditorSurface(
+                        text: $claudeUsageCommandInput,
+                        placeholder: "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}",
+                        onChange: scheduleClaudeUsageCommandSubmit
+                    )
+                }
+
+                settingsSection(title: "cc-paths", systemImage: "folder") {
+                    jsonEditorSurface(
+                        text: $claudeSettingsInput,
+                        placeholder: "{\n  \"paths\": []\n}",
+                        onChange: scheduleClaudeSettingsSubmit
+                    )
                 }
             }
-
-            settingsTile(title: "approval-focus") {
-                Menu {
-                    ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
-                        Button(option.menuTitle) {
-                            onApprovalDefaultFocusSelected(option)
-                        }
-                    }
-                } label: {
-                    pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 118)
-                }
-                .menuStyle(.borderlessButton)
-            }
-
-            settingsTile(title: "usage-auth", minHeight: 176) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(authRows) { row in
-                            ProviderAuthEnvKeyFieldRow(
-                                row: row,
-                                refreshToken: providerAuthRefreshToken(),
-                                onSubmit: onProviderAuthEnvKeySubmit
-                            )
-                        }
-                    }
-                    .padding(12)
-                }
-                .frame(maxWidth: .infinity, minHeight: 148, maxHeight: 188, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
-            }
-
-            settingsTile(title: "usage-cmd", minHeight: 176) {
-                ZStack(alignment: .topLeading) {
-                    if claudeUsageCommandInput.isEmpty {
-                        Text("{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.22))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                    }
-
-                    PlainJSONEditor(text: $claudeUsageCommandInput)
-                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
-                        .onChange(of: claudeUsageCommandInput) { _, _ in
-                            scheduleClaudeUsageCommandSubmit()
-                        }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
-            }
-
-            settingsTile(title: "cc-paths", minHeight: 176) {
-                ZStack(alignment: .topLeading) {
-                    if claudeSettingsInput.isEmpty {
-                        Text("{\n  \"paths\": []\n}")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.22))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                    }
-
-                    PlainJSONEditor(text: $claudeSettingsInput)
-                        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
-                        .onChange(of: claudeSettingsInput) { _, _ in
-                            scheduleClaudeSettingsSubmit()
-                        }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.045))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.07), lineWidth: 1)
-                )
-            }
+            .padding(16)
+            .frame(width: panelContentWidth, alignment: .leading)
         }
         .onAppear {
             claudeUsageCommandInput = claudeUsageCommandJSONText()
@@ -325,14 +266,13 @@ private struct SettingsPanelView: View {
             submitClaudeUsageCommand()
             submitClaudeSettings()
         }
-        .padding(14)
-        .frame(width: 780, alignment: .leading)
+        .frame(width: panelContentWidth, alignment: .leading)
         .background(
             ZStack {
-                Color(red: 0.055, green: 0.058, blue: 0.068)
+                Color.black
                 LinearGradient(
                     colors: [
-                        Color.white.opacity(0.03),
+                        Color.white.opacity(0.035),
                         Color.clear
                     ],
                     startPoint: .topLeading,
@@ -342,61 +282,289 @@ private struct SettingsPanelView: View {
         )
     }
 
-    private func settingsTile<Accessory: View>(
+    private var quickSettingsSection: some View {
+        VStack(spacing: 0) {
+            quickSettingsRow(
+                leading: {
+                    quickSettingCell(title: "Sound", systemImage: "speaker.wave.2") {
+                        HStack(alignment: .center, spacing: 10) {
+                            Toggle("", isOn: soundMutedBinding)
+                                .toggleStyle(.switch)
+                                .labelsHidden()
+                                .tint(settingsAccent)
+                                .scaleEffect(0.68)
+
+                            Menu {
+                                Button("选择本地 mp3…") {
+                                    onChooseNotificationSound()
+                                }
+
+                                Button("试听") {
+                                    onPreviewNotificationSound()
+                                }
+
+                                if currentNotificationSoundPath() != nil {
+                                    Divider()
+
+                                    Button("恢复默认提示音") {
+                                        onClearNotificationSound()
+                                    }
+                                }
+                            } label: {
+                                pickerCapsule(title: currentNotificationSoundTitle(), width: 168)
+                            }
+                            .menuStyle(.borderlessButton)
+                        }
+                    }
+                },
+                trailing: {
+                    quickSettingCell(title: "Screen", systemImage: "display") {
+                        Menu {
+                            ForEach(screenOptions()) { option in
+                                Button(option.title) {
+                                    option.action()
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: currentScreenTitle(), width: 124)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                }
+            )
+
+            sectionDivider
+
+            quickSettingsRow(
+                leading: {
+                    quickSettingCell(title: "Logo", systemImage: "seal") {
+                        Menu {
+                            ForEach(availableLogos, id: \.rawValue) { logo in
+                                Button(logo.menuTitle) {
+                                    store.selectLogo(logo)
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: store.selectedLogo.menuTitle, width: 116)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                },
+                trailing: {
+                    quickSettingCell(title: "approval-focus", systemImage: "command.circle") {
+                        Menu {
+                            ForEach(ApprovalDefaultFocusOption.allCases, id: \.rawValue) { option in
+                                Button(option.menuTitle) {
+                                    onApprovalDefaultFocusSelected(option)
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: approvalDefaultFocus().menuTitle, width: 124)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                }
+            )
+        }
+        .background(sectionSurfaceBackground(cornerRadius: sectionCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: sectionCornerRadius, style: .continuous)
+                .stroke(sectionBorder, lineWidth: 1)
+        )
+    }
+
+    private func quickSettingsRow<Leading: View, Trailing: View>(
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: 0) {
+            leading()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Rectangle()
+                .fill(dividerColor)
+                .frame(width: 1)
+
+            trailing()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func quickSettingCell<Accessory: View>(
         title: String,
-        minHeight: CGFloat = 62,
+        systemImage: String,
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.94))
-                .lineLimit(1)
-
-            Spacer(minLength: 10)
+            quickSettingLabel(title: title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             accessory()
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+    }
+
+    private func settingsSection<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsLabel(title: title, systemImage: systemImage)
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(sectionSurfaceBackground(cornerRadius: sectionCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: sectionCornerRadius, style: .continuous)
+                .stroke(sectionBorder, lineWidth: 1)
+        )
+    }
+
+    private func settingsLabel(title: String, systemImage: String) -> some View {
+        HStack(alignment: .center, spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(settingsAccent)
+
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+        }
+    }
+
+    private func quickSettingLabel(title: String, systemImage: String) -> some View {
+        HStack(alignment: .center, spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(settingsAccent)
+
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func insetSurface<Content: View>(
+        minHeight: CGFloat,
+        maxHeight: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, minHeight: minHeight, maxHeight: maxHeight, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(insetSurfaceFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(insetSurfaceBorder, lineWidth: 1)
+            )
+    }
+
+    private func jsonEditorSurface(
+        text: Binding<String>,
+        placeholder: String,
+        onChange: @escaping () -> Void
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            if text.wrappedValue.isEmpty {
+                Text(placeholder)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.22))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+
+            PlainJSONEditor(text: text)
+                .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+                .onChange(of: text.wrappedValue) { _, _ in
+                    onChange()
+                }
+        }
+        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.05),
-                            Color.white.opacity(0.025)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(insetSurfaceFill)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(insetSurfaceBorder, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 6)
     }
 
     private func pickerCapsule(title: String, width: CGFloat) -> some View {
         Text(title)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.white.opacity(0.88))
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(width: width, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.08))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(controlFill)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(controlStroke, lineWidth: 1)
+            )
+    }
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(dividerColor)
+            .frame(height: 1)
+    }
+
+    private func sectionSurfaceBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.085, green: 0.09, blue: 0.10).opacity(0.98),
+                        Color(red: 0.04, green: 0.05, blue: 0.06).opacity(0.96)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+    }
+
+    private var settingsAccent: Color {
+        Color(red: 0.32, green: 0.96, blue: 0.38)
+    }
+
+    private var sectionBorder: Color {
+        Color.white.opacity(0.06)
+    }
+
+    private var dividerColor: Color {
+        Color.white.opacity(0.055)
+    }
+
+    private var insetSurfaceFill: Color {
+        Color.white.opacity(0.04)
+    }
+
+    private var insetSurfaceBorder: Color {
+        Color.white.opacity(0.07)
+    }
+
+    private var controlFill: Color {
+        Color.white.opacity(0.06)
+    }
+
+    private var controlStroke: Color {
+        Color.white.opacity(0.075)
     }
 
     private var soundMutedBinding: Binding<Bool> {
@@ -619,7 +787,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 812, height: 438),
+            contentRect: NSRect(x: 0, y: 0, width: 812, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -628,7 +796,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         panel.title = "Settings"
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.isReleasedWhenClosed = false
-        panel.titlebarAppearsTransparent = true
+        panel.titlebarAppearsTransparent = false
         panel.isMovableByWindowBackground = true
         panel.level = .normal
         panel.collectionBehavior = []
@@ -671,6 +839,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             onApprovalDefaultFocusSelected: { [weak self] option in
                 self?.store.setApprovalDefaultFocus(option)
             },
+            currentNotificationSoundTitle: { [weak self] in
+                self?.currentNotificationSoundTitle ?? "默认提示音"
+            },
+            currentNotificationSoundPath: { [weak self] in
+                self?.store.customNotificationSoundPath
+            },
+            onChooseNotificationSound: { [weak self] in
+                self?.chooseCustomNotificationSound()
+            },
+            onClearNotificationSound: { [weak self] in
+                self?.store.setCustomNotificationSoundPath(nil)
+            },
+            onPreviewNotificationSound: { [weak self] in
+                self?.environment.appStore.runtimeStore.notificationSoundPlayer.playNotificationPing()
+            },
             providerAuthRows: { [weak self] in
                 self?.claudeProviderAuthRows ?? []
             },
@@ -685,6 +868,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func closeSettingsPanel() {
         settingsPanel?.close()
+    }
+
+    private var currentNotificationSoundTitle: String {
+        guard let path = store.customNotificationSoundPath, !path.isEmpty else {
+            return "默认提示音"
+        }
+
+        return URL(fileURLWithPath: path).lastPathComponent
+    }
+
+    private func chooseCustomNotificationSound() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.allowedContentTypes = [.mp3]
+        panel.title = "选择自定义提示音"
+        panel.message = "选择一个本地 mp3 文件作为提示音。"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            importCustomNotificationSound(from: url)
+        }
+    }
+
+    private func importCustomNotificationSound(from sourceURL: URL) {
+        do {
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(
+                at: FilePaths.notificationSoundsDirectory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            let destinationURL = FilePaths.customNotificationSound
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
+            }
+            try fileManager.copyItem(at: sourceURL, to: destinationURL)
+
+            UserDefaults.standard.removeObject(forKey: NotificationSoundPlayer.customSoundBookmarkDefaultsKey)
+            store.setCustomNotificationSoundPath(destinationURL.path)
+        } catch {
+            #if DEBUG
+            print("Failed to import notification sound: \(error)")
+            #endif
+        }
     }
 
     private func positionSettingsPanel(_ panel: NSWindow) {
@@ -966,13 +1196,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let leftAuxArea = screen.auxiliaryTopLeftArea ?? .zero
         let rightAuxArea = screen.auxiliaryTopRightArea ?? .zero
         let displayID = screen.displayID
+        let backingScaleFactor = max(screen.backingScaleFactor, 1)
+        let renderedScreenWidth = screen.frame.width * backingScaleFactor
         let isExternalDisplay = displayID.map { !isBuiltInDisplay($0) } ?? false
         let hasCameraHousing = !leftAuxArea.isEmpty || !rightAuxArea.isEmpty
         let cameraHousingWidth = hasCameraHousing
             ? max(screen.frame.width - leftAuxArea.width - rightAuxArea.width, 0)
             : 0
         let cameraHousingHeight = max(leftAuxArea.height, rightAuxArea.height, screen.safeAreaInsets.top)
-        store.updateDisplayLayout(isExternal: isExternalDisplay)
+        store.updateDisplayLayout(isExternal: isExternalDisplay, screenWidth: renderedScreenWidth)
         store.syncCameraHousingMetrics(
             width: cameraHousingWidth,
             height: cameraHousingHeight > 0 ? cameraHousingHeight : menuBarHeight

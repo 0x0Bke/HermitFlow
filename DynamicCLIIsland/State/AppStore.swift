@@ -71,11 +71,13 @@ final class AppStore: ObservableObject {
     var approvalDiagnosticMessage: String? { runtimeStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { presentationStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { presentationStore.approvalDefaultFocus }
+    var inlineApprovalCommandExpanded: Bool { presentationStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { presentationStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { runtimeStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { runtimeStore.accessibilityPromptDismissed }
     var runningGlyphAnimationSuppressed: Bool { presentationStore.runningGlyphAnimationSuppressed }
     var isSoundMuted: Bool { presentationStore.isSoundMuted }
+    var customNotificationSoundPath: String? { presentationStore.customNotificationSoundPath }
     var usageSnapshots: [ProviderUsageSnapshot] { runtimeStore.usageSnapshots }
     var usageProviderState: UsageProviderState { runtimeStore.usageProviderState }
     var claudeUsageSnapshot: ClaudeUsageSnapshot? { runtimeStore.claudeUsageSnapshot }
@@ -208,8 +210,16 @@ final class AppStore: ObservableObject {
         presentationStore.toggleSoundMuted()
     }
 
+    func setCustomNotificationSoundPath(_ path: String?) {
+        presentationStore.setCustomNotificationSoundPath(path)
+    }
+
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         presentationStore.setApprovalDefaultFocus(option)
+    }
+
+    func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
+        presentationStore.updateInlineApprovalCommandExpanded(expanded)
     }
 
     func bringForward(_ target: FocusTarget?) {
@@ -224,8 +234,8 @@ final class AppStore: ObservableObject {
         presentationStore.syncCameraHousingMetrics(width: width, height: height)
     }
 
-    func updateDisplayLayout(isExternal: Bool) {
-        presentationStore.updateDisplayLayout(isExternal: isExternal)
+    func updateDisplayLayout(isExternal: Bool, screenWidth: CGFloat) {
+        presentationStore.updateDisplayLayout(isExternal: isExternal, screenWidth: screenWidth)
     }
 
     func handlePanelHover(_ isHovering: Bool) {

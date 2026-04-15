@@ -10,6 +10,10 @@ import Foundation
 enum FilePaths {
     static let hermitFlowHome = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".hermitflow", isDirectory: true)
+    static let zshrc = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".zshrc", isDirectory: false)
+    static let bashrc = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".bashrc", isDirectory: false)
     static let claudeSettings = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude", isDirectory: true)
         .appendingPathComponent("settings.json", isDirectory: false)
@@ -17,6 +21,10 @@ enum FilePaths {
         .appendingPathComponent("claude-settings-paths.json", isDirectory: false)
     static let claudeProviderUsageConfig = hermitFlowHome
         .appendingPathComponent("claude-provider-usage.json", isDirectory: false)
+    static let notificationSoundsDirectory = hermitFlowHome
+        .appendingPathComponent("notification-sounds", isDirectory: true)
+    static let customNotificationSound = notificationSoundsDirectory
+        .appendingPathComponent("Custom", isDirectory: false)
     static let claudeUsageCache = URL(fileURLWithPath: "/tmp/hermitflow-rl.json")
     static let claudeStatusLineDebug = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
     static let codexHome = FileManager.default.homeDirectoryForCurrentUser
