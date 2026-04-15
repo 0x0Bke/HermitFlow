@@ -22,6 +22,47 @@ enum ApprovalDefaultFocusOption: String, CaseIterable {
     }
 }
 
+enum UsageDisplayType: String, CaseIterable {
+    case remaining
+    case used
+
+    var menuTitle: String {
+        switch self {
+        case .remaining:
+            return "剩余量"
+        case .used:
+            return "使用量"
+        }
+    }
+
+    var englishSubtitleSuffix: String {
+        switch self {
+        case .remaining:
+            return "remaining"
+        case .used:
+            return "used"
+        }
+    }
+
+    func percentageText(used: Int, remaining: Int) -> String {
+        switch self {
+        case .remaining:
+            return "\(remaining)%"
+        case .used:
+            return "\(used)%"
+        }
+    }
+
+    func percentageValue(used: Double, remaining: Double) -> Double {
+        switch self {
+        case .remaining:
+            return remaining
+        case .used:
+            return used
+        }
+    }
+}
+
 @MainActor
 final class PresentationStore: ObservableObject {
     typealias BrandLogo = IslandBrandLogo
@@ -62,6 +103,7 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var isSoundMuted: Bool
     @Published private(set) var customNotificationSoundPath: String?
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
+    @Published private(set) var usageDisplayType: UsageDisplayType
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
@@ -78,6 +120,7 @@ final class PresentationStore: ObservableObject {
     private let customNotificationSoundPathDefaultsKey = NotificationSoundPlayer.customSoundPathDefaultsKey
     private let customNotificationSoundBookmarkDefaultsKey = NotificationSoundPlayer.customSoundBookmarkDefaultsKey
     private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
+    private let usageDisplayTypeDefaultsKey = "HermitFlow.usageDisplayType"
 
     // TODO: These timing fields are still coupled to legacy AppDelegate behaviors.
     private var hasHoveredInsidePanelSinceShown = false
@@ -104,6 +147,8 @@ final class PresentationStore: ObservableObject {
         )
         let storedApprovalDefaultFocus = UserDefaults.standard.string(forKey: approvalDefaultFocusDefaultsKey)
         approvalDefaultFocus = ApprovalDefaultFocusOption(rawValue: storedApprovalDefaultFocus ?? "") ?? .accept
+        let storedUsageDisplayType = UserDefaults.standard.string(forKey: usageDisplayTypeDefaultsKey)
+        usageDisplayType = UsageDisplayType(rawValue: storedUsageDisplayType ?? "") ?? .remaining
     }
 
     var windowSize: CGSize {
@@ -412,6 +457,15 @@ final class PresentationStore: ObservableObject {
 
         approvalDefaultFocus = option
         UserDefaults.standard.set(option.rawValue, forKey: approvalDefaultFocusDefaultsKey)
+    }
+
+    func setUsageDisplayType(_ type: UsageDisplayType) {
+        guard usageDisplayType != type else {
+            return
+        }
+
+        usageDisplayType = type
+        UserDefaults.standard.set(type.rawValue, forKey: usageDisplayTypeDefaultsKey)
     }
 
     func syncRuntimeContext(

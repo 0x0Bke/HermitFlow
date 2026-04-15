@@ -9,6 +9,7 @@ import SwiftUI
 
 struct CodexUsageCardView: View {
     let snapshot: CodexUsageSnapshot
+    let displayType: UsageDisplayType
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -70,7 +71,8 @@ struct CodexUsageCardView: View {
     }
 
     private func windowRow(_ window: CodexUsageWindow) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let displayedValue = displayType.percentageValue(used: window.usedPercentage, remaining: window.leftPercentage)
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 Text(window.label)
                     .font(.system(size: 10, weight: .semibold))
@@ -84,12 +86,12 @@ struct CodexUsageCardView: View {
 
                         Capsule(style: .continuous)
                             .fill(Color(red: 0.02, green: 0.71, blue: 0.83))
-                            .frame(width: max(proxy.size.width * window.leftPercentage, window.leftPercentage > 0 ? 4 : 0))
+                            .frame(width: max(proxy.size.width * displayedValue, displayedValue > 0 ? 4 : 0))
                     }
                 }
                 .frame(height: 5)
 
-                Text("\(window.roundedLeftPercentage)%")
+                Text(displayType.percentageText(used: window.roundedUsedPercentage, remaining: window.roundedLeftPercentage))
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white)
             }

@@ -390,9 +390,9 @@ private extension IslandRootView {
                 usageProviderRow(
                     title: "Codex",
                     shortLabel: "5h",
-                    shortValue: codexWindow(minutes: 300, in: codexUsageSnapshot)?.leftPercentage,
+                    shortValue: displayedPercentage(for: codexWindow(minutes: 300, in: codexUsageSnapshot)),
                     longLabel: "wk",
-                    longValue: codexWindow(minutes: 10_080, in: codexUsageSnapshot)?.leftPercentage
+                    longValue: displayedPercentage(for: codexWindow(minutes: 10_080, in: codexUsageSnapshot))
                 )
             }
         }
@@ -426,7 +426,7 @@ private extension IslandRootView {
                 .frame(width: 108, alignment: .leading)
 
             ForEach(windows, id: \.id) { item in
-                usageMetricChip(label: item.label, value: item.window.leftPercentage)
+                usageMetricChip(label: item.label, value: displayedPercentage(for: item.window))
             }
         }
     }
@@ -483,6 +483,18 @@ private extension IslandRootView {
 
     func codexWindow(minutes: Int, in snapshot: CodexUsageSnapshot) -> CodexUsageWindow? {
         snapshot.windows.first { $0.windowMinutes == minutes }
+    }
+
+    func displayedPercentage(for window: ClaudeUsageWindow) -> Double {
+        store.usageDisplayType.percentageValue(used: window.usedPercentage, remaining: window.leftPercentage)
+    }
+
+    func displayedPercentage(for window: CodexUsageWindow?) -> Double? {
+        guard let window else {
+            return nil
+        }
+
+        return store.usageDisplayType.percentageValue(used: window.usedPercentage, remaining: window.leftPercentage)
     }
 
     func approvalCard(_ request: ApprovalRequest) -> some View {

@@ -12,7 +12,7 @@ enum UsageSummaryFormatter {
         "\(Int((min(max(value, 0), 1) * 100).rounded()))%"
     }
 
-    static func claudeSummaryText(_ snapshot: ClaudeUsageSnapshot?) -> String? {
+    static func claudeSummaryText(_ snapshot: ClaudeUsageSnapshot?, displayType: UsageDisplayType) -> String? {
         guard let snapshot, !snapshot.isEmpty else {
             return nil
         }
@@ -22,7 +22,7 @@ enum UsageSummaryFormatter {
             parts.append(providerDisplayName)
         }
         for entry in snapshot.displayWindows.prefix(2) {
-            parts.append("\(entry.label) \(entry.window.roundedLeftPercentage)%")
+            parts.append(displayType.summaryPart(label: entry.label, used: entry.window.roundedUsedPercentage, remaining: entry.window.roundedLeftPercentage))
         }
         if let updatedText = updatedText(snapshot.cachedAt) {
             parts.append("updated \(updatedText)")
@@ -31,7 +31,7 @@ enum UsageSummaryFormatter {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    static func codexSummaryText(_ snapshot: CodexUsageSnapshot?) -> String? {
+    static func codexSummaryText(_ snapshot: CodexUsageSnapshot?, displayType: UsageDisplayType) -> String? {
         guard let snapshot, !snapshot.isEmpty else {
             return nil
         }
@@ -39,7 +39,7 @@ enum UsageSummaryFormatter {
         var parts = snapshot.windows
             .sorted { $0.windowMinutes < $1.windowMinutes }
             .prefix(2)
-            .map { "\($0.label) \($0.roundedLeftPercentage)%" }
+            .map { displayType.summaryPart(label: $0.label, used: $0.roundedUsedPercentage, remaining: $0.roundedLeftPercentage) }
 
         if let planType = snapshot.planType, !planType.isEmpty {
             parts.append("plan \(planType)")
@@ -67,5 +67,16 @@ enum UsageSummaryFormatter {
         formatter.dateStyle = .none
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+}
+
+private extension UsageDisplayType {
+    func summaryPart(label: String, used: Int, remaining: Int) -> String {
+        switch self {
+        case .remaining:
+            return "\(label) \(remaining)%"
+        case .used:
+            return "\(label) \(used)%"
+        }
     }
 }

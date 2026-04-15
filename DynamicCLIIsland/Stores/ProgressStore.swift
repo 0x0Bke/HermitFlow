@@ -73,6 +73,7 @@ final class ProgressStore: ObservableObject {
     var approvalDiagnosticMessage: String? { appStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { appStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { appStore.approvalDefaultFocus }
+    var usageDisplayType: UsageDisplayType { appStore.usageDisplayType }
     var inlineApprovalCommandExpanded: Bool { appStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { appStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { appStore.accessibilityPermissionGranted }
@@ -83,8 +84,8 @@ final class ProgressStore: ObservableObject {
     var usageSnapshots: [ProviderUsageSnapshot] { appStore.usageSnapshots }
     var usageProviderState: UsageProviderState { appStore.usageProviderState }
     var hasUsageContent: Bool { claudeUsageSnapshot?.isEmpty == false || codexUsageSnapshot?.isEmpty == false }
-    var claudeUsageSummaryText: String? { UsageSummaryFormatter.claudeSummaryText(claudeUsageSnapshot) }
-    var codexUsageSummaryText: String? { UsageSummaryFormatter.codexSummaryText(codexUsageSnapshot) }
+    var claudeUsageSummaryText: String? { UsageSummaryFormatter.claudeSummaryText(claudeUsageSnapshot, displayType: usageDisplayType) }
+    var codexUsageSummaryText: String? { UsageSummaryFormatter.codexSummaryText(codexUsageSnapshot, displayType: usageDisplayType) }
     var sourceHealthReports: [SourceHealthReport] { appStore.sourceHealthReports }
     var windowSize: CGSize { appStore.windowSize }
     var cameraGapWidth: CGFloat { appStore.cameraGapWidth }
@@ -170,6 +171,10 @@ final class ProgressStore: ObservableObject {
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         appStore.setApprovalDefaultFocus(option)
+    }
+
+    func setUsageDisplayType(_ type: UsageDisplayType) {
+        appStore.setUsageDisplayType(type)
     }
 
     func updateInlineApprovalCommandExpanded(_ expanded: Bool) {

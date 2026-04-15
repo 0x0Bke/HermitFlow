@@ -183,6 +183,8 @@ private struct SettingsPanelView: View {
     let onClaudeSettingsJSONSubmit: (String) -> Void
     let approvalDefaultFocus: () -> ApprovalDefaultFocusOption
     let onApprovalDefaultFocusSelected: (ApprovalDefaultFocusOption) -> Void
+    let usageDisplayType: () -> UsageDisplayType
+    let onUsageDisplayTypeSelected: (UsageDisplayType) -> Void
     let currentNotificationSoundTitle: () -> String
     let currentNotificationSoundPath: () -> String?
     let onChooseNotificationSound: () -> Void
@@ -225,7 +227,7 @@ private struct SettingsPanelView: View {
                 settingsSection(title: "usage-cmd", systemImage: "terminal") {
                     jsonEditorSurface(
                         text: $claudeUsageCommandInput,
-                        placeholder: "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}",
+                        placeholder: "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"usedPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}",
                         onChange: scheduleClaudeUsageCommandSubmit
                     )
                 }
@@ -363,6 +365,28 @@ private struct SettingsPanelView: View {
                         }
                         .menuStyle(.borderlessButton)
                     }
+                }
+            )
+
+            sectionDivider
+
+            quickSettingsRow(
+                leading: {
+                    quickSettingCell(title: "usage-type", systemImage: "chart.bar") {
+                        Menu {
+                            ForEach(UsageDisplayType.allCases, id: \.rawValue) { option in
+                                Button(option.menuTitle) {
+                                    onUsageDisplayTypeSelected(option)
+                                }
+                            }
+                        } label: {
+                            pickerCapsule(title: usageDisplayType().menuTitle, width: 116)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+                },
+                trailing: {
+                    Color.clear
                 }
             )
         }
@@ -838,6 +862,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             },
             onApprovalDefaultFocusSelected: { [weak self] option in
                 self?.store.setApprovalDefaultFocus(option)
+            },
+            usageDisplayType: { [weak self] in
+                self?.store.usageDisplayType ?? .remaining
+            },
+            onUsageDisplayTypeSelected: { [weak self] option in
+                self?.store.setUsageDisplayType(option)
             },
             currentNotificationSoundTitle: { [weak self] in
                 self?.currentNotificationSoundTitle ?? "默认提示音"
@@ -1671,7 +1701,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let usageCommand = config.usageCommand ?? ClaudeProviderUsageConfig.defaultConfig.usageCommand
 
         guard let usageCommand else {
-            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"usedPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
         }
 
         do {
@@ -1681,7 +1711,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return String(decoding: data, as: UTF8.self)
         } catch {
             debugLog("Failed to encode Claude usage command JSON: \(error.localizedDescription)")
-            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+            return "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"usedPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
         }
     }
 
@@ -1703,7 +1733,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     private func decodeClaudeUsageCommand(from rawInput: String) throws -> ClaudeProviderUsageCommand {
         let normalizedInput = rawInput.isEmpty
-            ? "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"remainingPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
+            ? "{\n  \"command\": null,\n  \"window\": \"day\",\n  \"valueKind\": \"usedPercentage\",\n  \"displayLabel\": \"day\",\n  \"timeoutSeconds\": 5\n}"
             : rawInput
 
         let data = Data(normalizedInput.utf8)

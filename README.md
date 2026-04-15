@@ -153,7 +153,7 @@ The usage section is local-first and optional:
 - if `~/.hermitflow/claude-provider-usage.json` defines a top-level command-based usage query, HermitFlow uses only that command for Claude usage
 - if that command fails, times out, or returns an invalid percentage, Claude usage is hidden and HermitFlow does not fall back to the provider HTTP request
 
-The current UI shows remaining quota rather than used quota.
+The current UI defaults to showing remaining quota, and can be switched to used quota in Settings.
 
 For Claude, usage visibility depends on either the local payload shape, a top-level command-based usage query in `~/.hermitflow/claude-provider-usage.json`, or a supported third-party provider response. Official Claude-style `rate_limits.five_hour` and `rate_limits.seven_day` fields are rendered as `5h` and `wk`. Command-based queries can also emit a custom `day` window; when present, the Claude UI shows only `day` and hides the default `5h` / `wk` labels. Some third-party Anthropic-compatible models expose only context-window data or omit rate-limit fields entirely, in which case Claude usage will be absent even though Claude activity and approvals still work.
 

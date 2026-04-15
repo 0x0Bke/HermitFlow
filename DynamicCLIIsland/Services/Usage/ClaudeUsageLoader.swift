@@ -1242,7 +1242,7 @@ struct ClaudeProviderUsageConfig: Codable, Hashable {
         usageCommand: ClaudeProviderUsageCommand(
             command: nil,
             window: .day,
-            valueKind: .remainingPercentage,
+            valueKind: .usedPercentage,
             timeoutSeconds: 5,
             displayLabel: "day"
         ),

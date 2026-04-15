@@ -153,7 +153,7 @@ HermitFlow 也支持从自己管理的本地缓存文件读取 Claude 额度：
 - 若 `~/.hermitflow/claude-provider-usage.json` 顶层配置了命令式额度查询：HermitFlow 会只执行这个命令来获取 Claude 额度
 - 若该命令执行失败、超时或返回非法百分比：Claude 额度会直接隐藏，且不会回退到 provider HTTP 接口
 
-当前 UI 展示的是剩余额度，而不是已使用额度。
+当前 UI 默认展示剩余额度，也可以在设置中切换为展示已使用额度。
 
 对于 Claude，是否能显示额度取决于本地 payload 形状、`~/.hermitflow/claude-provider-usage.json` 顶层命令式额度查询结果或受支持 provider 的响应结构。只有当上游 payload 提供官方 Claude 风格的 `rate_limits.five_hour` 与 `rate_limits.seven_day`，或者三方 provider 响应能被映射为兼容窗口时，HermitFlow 才会显示 `5h` / `wk`。如果命令式查询返回的是 `day` 这类自定义窗口，Claude UI 会只显示该自定义标签，而不再显示默认的 `5h` / `wk`。某些第三方 Anthropic 兼容模型只提供 context window 信息，或者完全不提供 rate limit 字段，此时 Claude 活动和审批仍然可用，但 Claude 额度不会显示。
 
