@@ -4206,6 +4206,46 @@ private struct ClaudeHookEventPayload: Decodable {
         case terminalClient = "terminal_client"
         case terminalSessionHint = "terminal_session_hint"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        event = try container.decode(String.self, forKey: .event)
+        state = try container.decode(String.self, forKey: .state)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+        cwd = try container.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        clientOrigin = container.decodeLossyRawRepresentable(FocusClientOrigin.self, forKey: .clientOrigin)
+        terminalClient = container.decodeLossyRawRepresentable(TerminalClient.self, forKey: .terminalClient)
+        terminalSessionHint = container.decodeNormalizedOptionalString(forKey: .terminalSessionHint)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeNormalizedOptionalString(forKey key: Key) -> String? {
+        let rawValue: String?
+        do {
+            rawValue = try decodeIfPresent(String.self, forKey: key)
+        } catch {
+            return nil
+        }
+
+        guard let rawValue else {
+            return nil
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func decodeLossyRawRepresentable<T: RawRepresentable>(_ type: T.Type, forKey key: Key) -> T?
+    where T.RawValue == String {
+        guard let rawValue = decodeNormalizedOptionalString(forKey: key) else {
+            return nil
+        }
+
+        return T(rawValue: rawValue)
+    }
 }
 
 private struct ClaudeSessionRecord: Decodable {
