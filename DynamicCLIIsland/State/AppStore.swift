@@ -71,13 +71,15 @@ final class AppStore: ObservableObject {
     var approvalDiagnosticMessage: String? { runtimeStore.approvalDiagnosticMessage }
     var approvalPreviewEnabled: Bool { presentationStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { presentationStore.approvalDefaultFocus }
+    var usageDisplayType: UsageDisplayType { presentationStore.usageDisplayType }
     var inlineApprovalCommandExpanded: Bool { presentationStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { presentationStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { runtimeStore.accessibilityPermissionGranted }
     var accessibilityPromptDismissed: Bool { runtimeStore.accessibilityPromptDismissed }
     var runningGlyphAnimationSuppressed: Bool { presentationStore.runningGlyphAnimationSuppressed }
     var isSoundMuted: Bool { presentationStore.isSoundMuted }
-    var customNotificationSoundPath: String? { presentationStore.customNotificationSoundPath }
+    var customApprovalNotificationSoundPath: String? { presentationStore.customApprovalNotificationSoundPath }
+    var customCompletionNotificationSoundPath: String? { presentationStore.customCompletionNotificationSoundPath }
     var usageSnapshots: [ProviderUsageSnapshot] { runtimeStore.usageSnapshots }
     var usageProviderState: UsageProviderState { runtimeStore.usageProviderState }
     var claudeUsageSnapshot: ClaudeUsageSnapshot? { runtimeStore.claudeUsageSnapshot }
@@ -90,6 +92,7 @@ final class AppStore: ObservableObject {
     var isExpanded: Bool { presentationStore.isExpanded }
     var isHiddenMode: Bool { presentationStore.isHiddenMode }
     var hasInlineApprovalIsland: Bool { presentationStore.hasInlineApprovalIsland }
+    var hasInlineQuestionIsland: Bool { presentationStore.hasInlineQuestionIsland }
     var panelTransition: PresentationStore.PanelTransitionConfiguration { presentationStore.panelTransition }
     var windowResizeAnimation: PresentationStore.WindowResizeAnimation { presentationStore.windowResizeAnimation }
     var modeName: String { presentationStore.displayMode.rawValue }
@@ -210,12 +213,16 @@ final class AppStore: ObservableObject {
         presentationStore.toggleSoundMuted()
     }
 
-    func setCustomNotificationSoundPath(_ path: String?) {
-        presentationStore.setCustomNotificationSoundPath(path)
+    func setCustomNotificationSoundPath(_ path: String?, for kind: NotificationSoundKind) {
+        presentationStore.setCustomNotificationSoundPath(path, for: kind)
     }
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
         presentationStore.setApprovalDefaultFocus(option)
+    }
+
+    func setUsageDisplayType(_ type: UsageDisplayType) {
+        presentationStore.setUsageDisplayType(type)
     }
 
     func updateInlineApprovalCommandExpanded(_ expanded: Bool) {
@@ -260,6 +267,10 @@ final class AppStore: ObservableObject {
 
     func dismissAccessibilityPrompt() {
         runtimeStore.dismissAccessibilityPrompt()
+    }
+
+    func syncQuestionPrompt(_ prompt: ClaudeQuestionPrompt?) {
+        presentationStore.syncQuestionPrompt(prompt)
     }
 
     func updateCameraHousingWidth(_ width: CGFloat) {

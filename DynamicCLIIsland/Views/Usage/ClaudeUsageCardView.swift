@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ClaudeUsageCardView: View {
     let snapshot: ClaudeUsageSnapshot
+    let displayType: UsageDisplayType
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -66,15 +67,16 @@ struct ClaudeUsageCardView: View {
     }
 
     private func subtitle(for item: ClaudeLabeledUsageWindow) -> String {
+        let suffix = displayType.englishSubtitleSuffix
         switch item.id {
         case "five_hour":
-            return "5 hour remaining"
+            return "5 hour \(suffix)"
         case "seven_day":
-            return "7 day remaining"
+            return "7 day \(suffix)"
         case "day":
-            return "Daily remaining"
+            return "Daily \(suffix)"
         default:
-            return "\(item.label) remaining"
+            return "\(item.label) \(suffix)"
         }
     }
 
@@ -84,7 +86,7 @@ struct ClaudeUsageCardView: View {
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(Color(red: 0.48, green: 0.84, blue: 0.99))
 
-            Text("\(window.roundedLeftPercentage)%")
+            Text(displayType.percentageText(used: window.roundedUsedPercentage, remaining: window.roundedLeftPercentage))
                 .font(.system(size: 17, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
 

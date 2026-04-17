@@ -10,6 +10,7 @@ import SwiftUI
 struct UsageSummaryView: View {
     let claudeUsageSnapshot: ClaudeUsageSnapshot?
     let codexUsageSnapshot: CodexUsageSnapshot?
+    let displayType: UsageDisplayType
 
     var body: some View {
         if claudeUsageSnapshot != nil || codexUsageSnapshot != nil {
@@ -33,11 +34,11 @@ struct UsageSummaryView: View {
                 }
 
                 if let claudeUsageSnapshot, !claudeUsageSnapshot.isEmpty {
-                    ClaudeUsageCardView(snapshot: claudeUsageSnapshot)
+                    ClaudeUsageCardView(snapshot: claudeUsageSnapshot, displayType: displayType)
                 }
 
                 if let codexUsageSnapshot, !codexUsageSnapshot.isEmpty {
-                    CodexUsageCardView(snapshot: codexUsageSnapshot)
+                    CodexUsageCardView(snapshot: codexUsageSnapshot, displayType: displayType)
                 }
             }
         }

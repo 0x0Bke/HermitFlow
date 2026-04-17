@@ -72,7 +72,7 @@ enum SessionFreshness: String, Hashable {
     case stale
 }
 
-enum SessionOrigin: String, Hashable {
+enum SessionOrigin: String, Hashable, Codable {
     case claude
     case codex
     case generic
@@ -161,6 +161,7 @@ struct FocusTarget: Hashable {
 
 struct ApprovalRequest: Identifiable, Hashable {
     let id: String
+    let contextTitle: String?
     let commandSummary: String
     let commandText: String
     let rationale: String?
@@ -168,6 +169,25 @@ struct ApprovalRequest: Identifiable, Hashable {
     let createdAt: Date
     let source: SessionOrigin
     let resolutionKind: ApprovalResolutionKind
+
+    var displayRationale: String? {
+        guard let normalizedRationale = rationale?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !normalizedRationale.isEmpty else {
+            return nil
+        }
+
+        if source == .claude {
+            switch normalizedRationale {
+            case "Claude Code is waiting for a permission decision.",
+                 "Claude Code requested tool access.":
+                return nil
+            default:
+                break
+            }
+        }
+
+        return normalizedRationale
+    }
 }
 
 struct AgentSessionSnapshot: Identifiable, Hashable {

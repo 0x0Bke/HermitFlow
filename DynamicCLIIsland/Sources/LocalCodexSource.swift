@@ -90,7 +90,19 @@ struct LocalCodexSource: @unchecked Sendable {
                 terminalClient: terminalClient,
                 preferDesktopOrigin: shouldPreferDesktopOrigin
             )
-            let approvalRequest = sessionFileURL.flatMap { fetchPendingApproval(in: $0, focusTarget: focusTarget) }
+            let contextTitle = conversationSummary ?? sessionTitle(
+                sessionMeta: sessionMeta,
+                fallbackSource: threadSnapshot.threadSource,
+                terminalClient: terminalClient,
+                preferDesktopOrigin: shouldPreferDesktopOrigin
+            )
+            let approvalRequest = sessionFileURL.flatMap {
+                fetchPendingApproval(
+                    in: $0,
+                    focusTarget: focusTarget,
+                    contextTitle: contextTitle
+                )
+            }
             let activityState = approvalRequest != nil ? .running : deriveActivityState(from: threadSnapshot, sessionHints: sessionHints)
             let updatedAt = Date(timeIntervalSince1970: max(threadSnapshot.threadUpdatedAt, sessionHints?.latestKnownAt ?? 0))
             let freshness = sessionFreshness(
@@ -225,7 +237,18 @@ struct LocalCodexSource: @unchecked Sendable {
                 continue
             }
 
-            let approvalProbe = fetchApprovalProbe(in: sessionFileURL, focusTarget: focusTarget)
+            let conversationSummary = fetchConversationSummary(from: sessionFileURL)
+            let contextTitle = conversationSummary ?? sessionTitle(
+                sessionMeta: sessionMeta,
+                fallbackSource: threadReference.threadSource,
+                terminalClient: terminalClient,
+                preferDesktopOrigin: shouldPreferDesktopOrigin
+            )
+            let approvalProbe = fetchApprovalProbe(
+                in: sessionFileURL,
+                focusTarget: focusTarget,
+                contextTitle: contextTitle
+            )
             resolvedRequestIDs.formUnion(approvalProbe.resolvedRequestIDs)
 
             guard let approvalRequest = approvalProbe.pendingRequest else {
@@ -837,11 +860,23 @@ struct LocalCodexSource: @unchecked Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func fetchPendingApproval(in fileURL: URL, focusTarget: FocusTarget?) -> ApprovalRequest? {
-        fetchApprovalProbe(in: fileURL, focusTarget: focusTarget).pendingRequest
+    private func fetchPendingApproval(
+        in fileURL: URL,
+        focusTarget: FocusTarget?,
+        contextTitle: String?
+    ) -> ApprovalRequest? {
+        fetchApprovalProbe(
+            in: fileURL,
+            focusTarget: focusTarget,
+            contextTitle: contextTitle
+        ).pendingRequest
     }
 
-    private func fetchApprovalProbe(in fileURL: URL, focusTarget: FocusTarget?) -> CodexApprovalProbeResult {
+    private func fetchApprovalProbe(
+        in fileURL: URL,
+        focusTarget: FocusTarget?,
+        contextTitle: String?
+    ) -> CodexApprovalProbeResult {
         let recentLines = readRecentLines(from: fileURL, maxBytes: recentSessionScanBytes)
         guard !recentLines.isEmpty else {
             return CodexApprovalProbeResult(pendingRequest: nil, resolvedRequestIDs: [])
@@ -908,6 +943,7 @@ struct LocalCodexSource: @unchecked Sendable {
         return CodexApprovalProbeResult(
             pendingRequest: ApprovalRequest(
                 id: latestPending.callID,
+                contextTitle: contextTitle,
                 commandSummary: summarizeCommand(latestPending.command),
                 commandText: normalizedCommandText(latestPending.command),
                 rationale: latestPending.justification,
@@ -1582,8 +1618,24 @@ final class LocalClaudeSource: @unchecked Sendable {
         bridge.latestApprovalRequest()
     }
 
+    func fetchLatestQuestionPrompt() -> ClaudeQuestionPrompt? {
+        bridge.latestQuestionPrompt()
+    }
+
     func resolveApproval(id: String, decision: ApprovalDecision) -> Bool {
         bridge.resolveApproval(id: id, decision: decision)
+    }
+
+    func resolveQuestion(id: String, response: ClaudeQuestionResponse) -> Bool {
+        bridge.resolveQuestion(id: id, response: response)
+    }
+
+    func dismissQuestion(id: String) -> Bool {
+        bridge.dismissQuestion(id: id)
+    }
+
+    func isQuestionSubmittable(id: String) -> Bool {
+        bridge.isQuestionSubmittable(id: id)
     }
 
     func startCallbackServer() {
@@ -1622,11 +1674,16 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let defaultSettingsURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/settings.json")
     private let customSettingsPathsURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-settings-paths.json")
     private let customSettingsPathsEnvironmentKey = "HERMITFLOW_CLAUDE_SETTINGS_PATHS"
+    private let askUserQuestionModeDefaultsKey = "HermitFlow.askUserQuestionHandlingMode"
     private let hookScriptName = "hermit-claude-hook.js"
     private let hookMarker = "hermit-claude-hook.js"
     private let permissionHookPath = "/permission/hermitflow"
+    private let questionHookPath = "/question/hermitflow"
+    private let askUserQuestionHookPath = "/ask-user/hermitflow"
     private let claudeUsageCacheURL = URL(fileURLWithPath: "/tmp/hermitflow-rl.json")
     private let claudeStatusLineDebugURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
+    private let questionStateRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions")
+    private let latestQuestionStateURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions/latest-question.json")
     private let claudeHistoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/history.jsonl")
     private let claudeSessionsRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/sessions")
     private let claudeProjectsRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/projects")
@@ -1647,6 +1704,8 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private var sessions: [String: ClaudeTrackedSession] = [:]
     private var approvals: [String: ClaudePendingApproval] = [:]
     private var approvalOrder: [String] = []
+    private var questions: [String: ClaudePendingQuestion] = [:]
+    private var questionOrder: [String] = []
     private var lastErrorMessage: String?
 
     func start() {
@@ -1751,6 +1810,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
     }
 
+    func latestQuestionPrompt() -> ClaudeQuestionPrompt? {
+        queue.sync {
+            cleanupExpiredState(now: .now)
+            return latestQuestionPromptLocked()
+        }
+    }
+
     func hookHealthReport() -> SourceHealthReport {
         queue.sync {
             SourceHealthReport(sourceName: "Claude", issues: hookIssuesLocked())
@@ -1786,6 +1852,82 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 on: connection
             )
             return true
+        }
+    }
+
+    func resolveQuestion(id: String, response: ClaudeQuestionResponse) -> Bool {
+        queue.sync {
+            cleanupExpiredState(now: .now)
+            guard let question = questions[id] else {
+                questionOrder.removeAll { $0 == id }
+                clearPersistedQuestionPrompt()
+                return false
+            }
+
+            guard let connection = question.connection else {
+                return false
+            }
+
+            let body: String
+            switch question.source {
+            case .elicitation:
+                body = makeElicitationDecision(for: response, pendingQuestion: question)
+            case .askUserQuestion:
+                body = makeAskUserQuestionDecision(for: response, pendingQuestion: question)
+            }
+            questions.removeValue(forKey: id)
+            questionOrder.removeAll { $0 == id }
+            persistLatestQuestionPromptLocked()
+            sendHTTPResponse(status: 200, body: body, contentType: "application/json", on: connection)
+            return true
+        }
+    }
+
+    func dismissQuestion(id: String) -> Bool {
+        queue.sync {
+            cleanupExpiredState(now: .now)
+            guard let question = questions[id] else {
+                questionOrder.removeAll { $0 == id }
+                clearPersistedQuestionPrompt()
+                return false
+            }
+
+            guard let connection = question.connection else {
+                questions.removeValue(forKey: id)
+                questionOrder.removeAll { $0 == id }
+                persistLatestQuestionPromptLocked()
+                return true
+            }
+
+            let body: String
+            switch question.source {
+            case .elicitation:
+                body = makeDeclineElicitationDecision()
+            case .askUserQuestion:
+                body = makeDenyPreToolUseDecision()
+            }
+
+            questions.removeValue(forKey: id)
+            questionOrder.removeAll { $0 == id }
+            persistLatestQuestionPromptLocked()
+            sendHTTPResponse(status: 200, body: body, contentType: "application/json", on: connection)
+            return true
+        }
+    }
+
+    func isQuestionSubmittable(id: String) -> Bool {
+        queue.sync {
+            cleanupExpiredState(now: .now)
+            guard let question = questions[id] else {
+                return false
+            }
+
+            switch question.source {
+            case .elicitation:
+                return question.connection != nil
+            case .askUserQuestion:
+                return question.connection != nil
+            }
         }
     }
 
@@ -1865,6 +2007,10 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             handleState(body: request.body, on: connection)
         case ("POST", "/permission"), ("POST", permissionHookPath):
             handlePermission(body: request.body, on: connection)
+        case ("POST", questionHookPath):
+            handleQuestion(body: request.body, on: connection)
+        case ("POST", askUserQuestionHookPath):
+            handleAskUserQuestion(body: request.body, on: connection)
         default:
             sendHTTPResponse(status: 404, body: "not found", contentType: "text/plain", on: connection)
         }
@@ -1893,6 +2039,9 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             if shouldClearApprovals(for: payload) {
                 clearApprovals(forSessionID: sessionID)
             }
+            if shouldClearQuestions(for: payload) {
+                clearQuestions(forSessionID: sessionID)
+            }
             lastErrorMessage = nil
         }
 
@@ -1902,6 +2051,18 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private func handlePermission(body: Data, on connection: NWConnection) {
         guard let payload = try? JSONDecoder().decode(ClaudeHookPermissionPayload.self, from: body) else {
             sendHTTPResponse(status: 400, body: "bad json", contentType: "text/plain", on: connection)
+            return
+        }
+
+        // AskUserQuestion should proceed into its native/tool-specific flow instead of
+        // being surfaced as a generic approval request first.
+        if payload.toolName == "AskUserQuestion" {
+            sendHTTPResponse(
+                status: 200,
+                body: "",
+                contentType: "text/plain",
+                on: connection
+            )
             return
         }
 
@@ -1946,13 +2107,117 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
     }
 
+    private func handleQuestion(body: Data, on connection: NWConnection) {
+        guard let payload = try? JSONDecoder().decode(ClaudeHookElicitationPayload.self, from: body) else {
+            sendHTTPResponse(status: 400, body: "bad json", contentType: "text/plain", on: connection)
+            return
+        }
+
+        queue.sync {
+            cleanupExpiredState(now: .now)
+
+            let sessionID = payload.sessionID.isEmpty ? "default" : payload.sessionID
+            let prompt = makeQuestionPrompt(from: payload, sessionID: sessionID)
+            questions[prompt.id] = ClaudePendingQuestion(
+                prompt: prompt,
+                source: .elicitation(payload),
+                connection: connection
+            )
+            questionOrder.removeAll { $0 == prompt.id }
+            questionOrder.append(prompt.id)
+            persistLatestQuestionPromptLocked()
+
+            let existing = sessions[sessionID]
+            sessions[sessionID] = ClaudeTrackedSession(
+                rawSessionID: sessionID,
+                cwd: existing?.cwd ?? "",
+                source: existing?.source ?? payload.mcpServerName,
+                conversationSummary: existing?.conversationSummary ?? prompt.title,
+                clientOrigin: existing?.clientOrigin,
+                terminalClient: existing?.terminalClient,
+                terminalSessionHint: existing?.terminalSessionHint,
+                status: .running,
+                lastEvent: "Elicitation",
+                lastActivityAt: .now
+            )
+        }
+    }
+
+    private func handleAskUserQuestion(body: Data, on connection: NWConnection) {
+        guard let payload = try? JSONDecoder().decode(ClaudeHookAskUserQuestionPayload.self, from: body) else {
+            sendHTTPResponse(
+                status: 200,
+                body: makePassThroughPreToolUseDecision(updatedInput: nil),
+                contentType: "application/json",
+                on: connection
+            )
+            return
+        }
+
+        guard payload.toolName == "AskUserQuestion",
+              let toolInput = payload.toolInput,
+              toolInput.questions.count == 1,
+              let askQuestion = toolInput.questions.first,
+              askQuestion.multiSelect == false else {
+            sendHTTPResponse(
+                status: 200,
+                body: makePassThroughPreToolUseDecision(updatedInput: payload.toolInput?.jsonObject),
+                contentType: "application/json",
+                on: connection
+            )
+            return
+        }
+
+        queue.sync {
+            cleanupExpiredState(now: .now)
+
+            let sessionID = payload.sessionID.isEmpty ? "default" : payload.sessionID
+            let handlingMode = askUserQuestionHandlingMode()
+            let prompt = makeQuestionPrompt(from: payload, sessionID: sessionID, handlingMode: handlingMode)
+            questions[prompt.id] = ClaudePendingQuestion(
+                prompt: prompt,
+                source: .askUserQuestion(payload),
+                connection: handlingMode == .takeOver ? connection : nil
+            )
+            questionOrder.removeAll { $0 == prompt.id }
+            questionOrder.append(prompt.id)
+            persistLatestQuestionPromptLocked()
+
+            let existing = sessions[sessionID]
+            sessions[sessionID] = ClaudeTrackedSession(
+                rawSessionID: sessionID,
+                cwd: payload.cwd.isEmpty ? existing?.cwd ?? "" : payload.cwd,
+                source: existing?.source ?? payload.toolName,
+                conversationSummary: existing?.conversationSummary ?? prompt.title,
+                clientOrigin: existing?.clientOrigin,
+                terminalClient: existing?.terminalClient,
+                terminalSessionHint: existing?.terminalSessionHint,
+                status: .running,
+                lastEvent: "AskUserQuestion",
+                lastActivityAt: .now
+            )
+        }
+
+        if askUserQuestionHandlingMode() == .mirror {
+            sendHTTPResponse(
+                status: 200,
+                body: makePassThroughPreToolUseDecision(updatedInput: payload.toolInput?.jsonObject),
+                contentType: "application/json",
+                on: connection
+            )
+        }
+    }
+
     private func cleanupConnection(_ connection: NWConnection) {
         queue.sync {
             let resolvedApprovalIDs = approvals.compactMap { approvalID, approval in
                 approval.connection === connection ? approvalID : nil
             }
+            let resolvedQuestionIDs = questions.compactMap { questionID, question in
+                question.connection === connection ? questionID : nil
+            }
 
-            guard !resolvedApprovalIDs.isEmpty else {
+            guard !resolvedApprovalIDs.isEmpty || !resolvedQuestionIDs.isEmpty else {
                 return
             }
 
@@ -1960,6 +2225,12 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 approvals.removeValue(forKey: approvalID)
             }
             approvalOrder.removeAll { resolvedApprovalIDs.contains($0) }
+
+            for questionID in resolvedQuestionIDs {
+                questions.removeValue(forKey: questionID)
+            }
+            questionOrder.removeAll { resolvedQuestionIDs.contains($0) }
+            persistLatestQuestionPromptLocked()
         }
     }
 
@@ -1970,6 +2241,16 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         approvals = approvals.filter { _, approval in
             approval.sessionID != sessionID
         }
+    }
+
+    private func clearQuestions(forSessionID sessionID: String) {
+        questionOrder = questionOrder.filter { questionID in
+            questions[questionID]?.prompt.sessionID != sessionID
+        }
+        questions = questions.filter { _, question in
+            question.prompt.sessionID != sessionID
+        }
+        persistLatestQuestionPromptLocked()
     }
 
     private func shouldClearApprovals(for payload: ClaudeHookEventPayload) -> Bool {
@@ -1989,6 +2270,19 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
 
         return false
+    }
+
+    private func shouldClearQuestions(for payload: ClaudeHookEventPayload) -> Bool {
+        if payload.event == "SessionEnd" {
+            return true
+        }
+
+        switch payload.event {
+        case "UserPromptSubmit", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "PostCompact":
+            return true
+        default:
+            return false
+        }
     }
 
     private func hookIssuesLocked() -> [DiagnosticIssue] {
@@ -2118,7 +2412,38 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         sessions = sessions.filter { _, session in
             now.timeIntervalSince(session.lastActivityAt) <= sessionStaleThreshold
         }
+        questions = questions.filter { _, question in
+            question.prompt.expiresAt.map { now < $0 } ?? true
+        }
+        questions = questions.filter { _, question in
+            isQuestionStillActiveLocked(question, now: now)
+        }
+        questionOrder = questionOrder.filter { questions[$0] != nil }
+        persistLatestQuestionPromptLocked()
+    }
 
+    private func isQuestionStillActiveLocked(_ question: ClaudePendingQuestion, now: Date) -> Bool {
+        guard let session = sessions[question.prompt.sessionID] else {
+            return false
+        }
+
+        let projectState = fetchClaudeProjectDerivedState(for: session.rawSessionID, cwd: session.cwd)
+        let interruptionState = fetchLatestClaudeInterruption(for: session.rawSessionID, cwd: session.cwd)
+        let refreshedSession = refreshedClaudeSession(
+            session,
+            projectState: projectState,
+            interruptionState: interruptionState
+        )
+
+        if refreshedSession.status.isTerminal {
+            return false
+        }
+
+        if refreshedSession.lastEvent == "interrupted" {
+            return false
+        }
+
+        return now.timeIntervalSince(refreshedSession.lastActivityAt) <= sessionStaleThreshold
     }
 
     private func latestApprovalRequestLocked() -> ApprovalRequest? {
@@ -2131,6 +2456,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
             return ApprovalRequest(
                 id: approval.id,
+                contextTitle: sessions[approval.sessionID]?.title,
                 commandSummary: approval.commandSummary,
                 commandText: approval.commandText,
                 rationale: approval.rationale,
@@ -2139,6 +2465,22 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 source: .claude,
                 resolutionKind: .localHTTPHook
             )
+        }
+
+        return nil
+    }
+
+    private func latestQuestionPromptLocked() -> ClaudeQuestionPrompt? {
+        for questionID in questionOrder.reversed() {
+            guard let question = questions[questionID] else {
+                continue
+            }
+
+            guard !question.prompt.isExpired else {
+                continue
+            }
+
+            return question.prompt
         }
 
         return nil
@@ -3082,6 +3424,208 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         return payload.toolName
     }
 
+    private func makeQuestionPrompt(from payload: ClaudeHookElicitationPayload, sessionID: String) -> ClaudeQuestionPrompt {
+        let createdAt = Date()
+        let normalizedField = payload.requestedSchema?.primaryField
+        let options = normalizedField?.options ?? []
+        let allowsFreeText = normalizedField?.allowsFreeText ?? true
+        let title = payload.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? payload.message?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? "Claude is asking a question"
+        let detailParts = [
+            payload.detail?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            payload.mcpServerName.isEmpty ? nil : "Server: \(payload.mcpServerName)"
+        ].compactMap { $0 }
+
+        return ClaudeQuestionPrompt(
+            id: payload.elicitationID?.nilIfEmpty ?? UUID().uuidString,
+            sessionID: sessionID,
+            title: title,
+            message: payload.message?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            detail: detailParts.isEmpty ? nil : detailParts.joined(separator: "\n"),
+            options: options,
+            allowsFreeText: allowsFreeText,
+            placeholder: normalizedField?.placeholder,
+            defaultText: normalizedField?.defaultValue,
+            createdAt: createdAt,
+            expiresAt: payload.timeoutSeconds.map { createdAt.addingTimeInterval(TimeInterval($0)) },
+            source: .claude
+        )
+    }
+
+    private func makeQuestionPrompt(
+        from payload: ClaudeHookAskUserQuestionPayload,
+        sessionID: String,
+        handlingMode: AskUserQuestionHandlingMode
+    ) -> ClaudeQuestionPrompt {
+        let createdAt = Date()
+        let askQuestion = payload.toolInput?.questions.first
+        let options = askQuestion?.options.enumerated().map { index, option in
+            QuestionOption(
+                id: "\(payload.toolUseID ?? sessionID)-\(index)",
+                title: option.label,
+                detail: option.description,
+                value: option.label,
+                isDefault: false
+            )
+        } ?? []
+
+        return ClaudeQuestionPrompt(
+            id: payload.toolUseID?.nilIfEmpty ?? UUID().uuidString,
+            sessionID: sessionID,
+            title: askQuestion?.header?.nilIfEmpty ?? "Claude Needs Input",
+            message: askQuestion?.question.nilIfEmpty,
+            detail: handlingMode.promptHint,
+            options: options,
+            allowsFreeText: true,
+            placeholder: "Type another answer",
+            defaultText: nil,
+            createdAt: createdAt,
+            expiresAt: nil,
+            source: .claude
+        )
+    }
+
+    private func makeElicitationDecision(
+        for response: ClaudeQuestionResponse,
+        pendingQuestion: ClaudePendingQuestion
+    ) -> String {
+        let content = elicitationContent(from: response, pendingQuestion: pendingQuestion)
+        let body: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "Elicitation",
+                "action": "accept",
+                "content": content
+            ]
+        ]
+
+        let data = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data()
+        return String(data: data, encoding: .utf8)
+            ?? "{\"hookSpecificOutput\":{\"hookEventName\":\"Elicitation\",\"action\":\"decline\",\"content\":{}}}"
+    }
+
+    private func makeDeclineElicitationDecision() -> String {
+        let body: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "Elicitation",
+                "action": "decline",
+                "content": [:]
+            ]
+        ]
+
+        let data = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data()
+        return String(data: data, encoding: .utf8)
+            ?? "{\"hookSpecificOutput\":{\"hookEventName\":\"Elicitation\",\"action\":\"decline\",\"content\":{}}}"
+    }
+
+    private func makeAskUserQuestionDecision(
+        for response: ClaudeQuestionResponse,
+        pendingQuestion: ClaudePendingQuestion
+    ) -> String {
+        guard case let .askUserQuestion(payload) = pendingQuestion.source else {
+            return makeDenyPreToolUseDecision()
+        }
+
+        let answerValue = response.textAnswer?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? response.selectedOptionValue?.nilIfEmpty
+            ?? response.displaySummary.nilIfEmpty
+
+        guard let toolInput = payload.toolInput,
+              let askQuestion = toolInput.questions.first,
+              let answerValue else {
+            return makeDenyPreToolUseDecision()
+        }
+
+        var updatedInput = toolInput.jsonObject
+        updatedInput["answers"] = [
+            "0": answerValue,
+            askQuestion.question: answerValue
+        ]
+        return makeAllowPreToolUseDecision(updatedInput: updatedInput)
+    }
+
+    private func makeAllowPreToolUseDecision(updatedInput: [String: Any]?) -> String {
+        var hookOutput: [String: Any] = [
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow"
+        ]
+        if let updatedInput {
+            hookOutput["updatedInput"] = updatedInput
+        }
+
+        let body: [String: Any] = ["hookSpecificOutput": hookOutput]
+        let data = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data()
+        return String(data: data, encoding: .utf8)
+            ?? "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}"
+    }
+
+    private func makePassThroughPreToolUseDecision(updatedInput: [String: Any]?) -> String {
+        // Let Claude continue with its native AskUserQuestion flow without creating an extra approval step.
+        makeAllowPreToolUseDecision(updatedInput: updatedInput)
+    }
+
+    private func askUserQuestionHandlingMode() -> AskUserQuestionHandlingMode {
+        AskUserQuestionHandlingMode(
+            rawValue: UserDefaults.standard.string(forKey: askUserQuestionModeDefaultsKey) ?? ""
+        ) ?? .takeOver
+    }
+
+    private func makeDenyPreToolUseDecision() -> String {
+        let body: [String: Any] = [
+            "hookSpecificOutput": [
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny"
+            ]
+        ]
+
+        let data = (try? JSONSerialization.data(withJSONObject: body, options: [])) ?? Data()
+        return String(data: data, encoding: .utf8)
+            ?? "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\"}}"
+    }
+
+    private func elicitationContent(
+        from response: ClaudeQuestionResponse,
+        pendingQuestion: ClaudePendingQuestion
+    ) -> [String: Any] {
+        let trimmedText = response.textAnswer?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let answerValue = response.selectedOptionValue?.nilIfEmpty ?? trimmedText?.nilIfEmpty ?? response.displaySummary
+        guard !answerValue.isEmpty else {
+            return [:]
+        }
+
+        guard case let .elicitation(payload) = pendingQuestion.source else {
+            return [:]
+        }
+        let requestedSchema = payload.requestedSchema
+        let primaryFieldName = requestedSchema?.primaryField?.name ?? "answer"
+        return [primaryFieldName: answerValue]
+    }
+
+    private func persistLatestQuestionPromptLocked() {
+        guard let prompt = latestQuestionPromptLocked() else {
+            clearPersistedQuestionPrompt()
+            return
+        }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        guard let data = try? encoder.encode(prompt) else {
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: questionStateRootURL, withIntermediateDirectories: true)
+            try data.write(to: latestQuestionStateURL, options: .atomic)
+        } catch {
+            return
+        }
+    }
+
+    private func clearPersistedQuestionPrompt() {
+        try? FileManager.default.removeItem(at: latestQuestionStateURL)
+    }
+
     private func summarizeCommand(_ command: String) -> String {
         let singleLine = normalizedCommandText(command)
 
@@ -3225,10 +3769,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         };
         const USAGE_CACHE_PATH = \(String(reflecting: claudeUsageCacheURL.path));
         const STATUSLINE_DEBUG_PATH = \(String(reflecting: claudeStatusLineDebugURL.path));
+        const ASK_USER_QUESTION_MIRROR_PATH = \(String(reflecting: askUserQuestionHookPath));
+        const ASK_USER_QUESTION_MIRROR_ENABLED = \(askUserQuestionHandlingMode() == .mirror ? "true" : "false");
 
         const event = process.argv[2];
         if (event === "StatusLine") {
           handleStatusLine();
+          return;
         }
         if (!EVENT_TO_STATE[event]) process.exit(0);
 
@@ -3243,12 +3790,18 @@ private final class ClaudeHookBridge: @unchecked Sendable {
           if (sent) return;
           sent = true;
 
+          const rawInput = Buffer.concat(chunks).toString("utf8");
           let payload = {};
           try {
-            payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            payload = JSON.parse(rawInput);
           } catch {}
 
           writeUsageSnapshot(payload);
+          const shouldMirrorAskUserQuestion =
+            ASK_USER_QUESTION_MIRROR_ENABLED &&
+            event === "PreToolUse" &&
+            payload?.tool_name === "AskUserQuestion" &&
+            rawInput.trim().length > 0;
 
           const body = JSON.stringify({
             event,
@@ -3261,6 +3814,30 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             terminal_session_hint: detectTerminalSessionHint()
           });
 
+          let pendingRequests = 1 + (shouldMirrorAskUserQuestion ? 1 : 0);
+          let finished = false;
+          const finish = () => {
+            if (finished) return;
+            pendingRequests -= 1;
+            if (pendingRequests <= 0) {
+              finished = true;
+              process.exit(0);
+            }
+          };
+          const forceExit = () => {
+            if (finished) return;
+            finished = true;
+            process.exit(0);
+          };
+          setTimeout(forceExit, 900);
+
+          if (shouldMirrorAskUserQuestion) {
+            postAskUserQuestionMirror(rawInput, finish);
+          }
+          postStateUpdate(body, finish);
+        }
+
+        function postStateUpdate(body, onDone) {
           const req = http.request({
             hostname: "127.0.0.1",
             port: \(listenerPort),
@@ -3273,15 +3850,40 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             timeout: 500
           }, (res) => {
             res.resume();
-            res.on("end", () => process.exit(0));
+            res.on("end", onDone);
           });
 
-          req.on("error", () => process.exit(0));
+          req.on("error", onDone);
           req.on("timeout", () => {
             req.destroy();
-            process.exit(0);
+            onDone();
           });
           req.write(body);
+          req.end();
+        }
+
+        function postAskUserQuestionMirror(input, onDone) {
+          const req = http.request({
+            hostname: "127.0.0.1",
+            port: \(listenerPort),
+            path: ASK_USER_QUESTION_MIRROR_PATH,
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(input)
+            },
+            timeout: 500
+          }, (res) => {
+            res.resume();
+            res.on("end", onDone);
+          });
+
+          req.on("error", onDone);
+          req.on("timeout", () => {
+            req.destroy();
+            onDone();
+          });
+          req.write(input);
           req.end();
         }
 
@@ -3483,11 +4085,13 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             "PreCompact",
             "PostCompact",
             "Notification",
-            "Elicitation",
             "WorktreeCreate"
         ]
 
         let permissionURL = "http://127.0.0.1:\(listenerPort)\(permissionHookPath)"
+        let questionURL = "http://127.0.0.1:\(listenerPort)\(questionHookPath)"
+        let askUserQuestionURL = "http://127.0.0.1:\(listenerPort)\(askUserQuestionHookPath)"
+        let askUserQuestionMode = askUserQuestionHandlingMode()
         let settingsURLs = try resolvedClaudeSettingsURLs()
         var syncedAnyFile = false
         var failures: [String] = []
@@ -3499,7 +4103,10 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                     nodePath: nodePath,
                     scriptPath: scriptPath,
                     commandEvents: commandEvents,
-                    permissionURL: permissionURL
+                    permissionURL: permissionURL,
+                    questionURL: questionURL,
+                    askUserQuestionURL: askUserQuestionURL,
+                    askUserQuestionMode: askUserQuestionMode
                 )
                 syncedAnyFile = true
             } catch {
@@ -3520,7 +4127,10 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         nodePath: String,
         scriptPath: String,
         commandEvents: [String],
-        permissionURL: String
+        permissionURL: String,
+        questionURL: String,
+        askUserQuestionURL: String,
+        askUserQuestionMode: AskUserQuestionHandlingMode
     ) throws {
         let fileManager = FileManager.default
         let settingsDirectoryURL = settingsURL.deletingLastPathComponent()
@@ -3535,6 +4145,20 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         }
 
         hooks["PermissionRequest"] = upsertHTTPHook(into: hooks["PermissionRequest"], url: permissionURL)
+        hooks["Elicitation"] = upsertHTTPHook(into: hooks["Elicitation"], url: questionURL)
+        switch askUserQuestionMode {
+        case .takeOver:
+            hooks["PreToolUse"] = upsertMatchedHTTPHook(
+                into: hooks["PreToolUse"],
+                matcher: "AskUserQuestion",
+                url: askUserQuestionURL
+            )
+        case .mirror:
+            hooks["PreToolUse"] = removingManagedMatchedHook(
+                from: hooks["PreToolUse"],
+                matcher: "AskUserQuestion"
+            )
+        }
 
         var updatedSettings = settings
         updatedSettings["hooks"] = hooks
@@ -3742,25 +4366,43 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private func upsertHTTPHook(into existingValue: Any?, url: String) -> [[String: Any]] {
         var entries = (existingValue as? [[String: Any]]) ?? []
         var found = false
+        var keptManagedHook = false
 
         for index in entries.indices {
-            guard var hooks = entries[index]["hooks"] as? [[String: Any]] else {
+            guard let hooks = entries[index]["hooks"] as? [[String: Any]] else {
                 continue
             }
 
-            for hookIndex in hooks.indices {
-                guard let hookURL = hooks[hookIndex]["url"] as? String,
-                      ownedPermissionHookURLs.contains(hookURL)
+            var updatedHooks: [[String: Any]] = []
+            updatedHooks.reserveCapacity(hooks.count)
+
+            for var hook in hooks {
+                guard let hookURL = hook["url"] as? String,
+                      ownedManagedHookURLs.contains(hookURL)
                 else {
+                    updatedHooks.append(hook)
                     continue
                 }
 
-                hooks[hookIndex]["type"] = "http"
-                hooks[hookIndex]["url"] = url
-                hooks[hookIndex]["timeout"] = 600
-                entries[index]["hooks"] = hooks
+                if keptManagedHook {
+                    found = true
+                    continue
+                }
+
+                hook["type"] = "http"
+                hook["url"] = url
+                hook["timeout"] = 600
+                updatedHooks.append(hook)
+                keptManagedHook = true
                 found = true
             }
+
+            entries[index]["hooks"] = updatedHooks
+        }
+
+        entries.removeAll { entry in
+            let hooks = (entry["hooks"] as? [[String: Any]]) ?? []
+            return hooks.isEmpty
         }
 
         if !found {
@@ -3779,6 +4421,72 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         return entries
     }
 
+    private func upsertMatchedHTTPHook(into existingValue: Any?, matcher: String, url: String) -> [[String: Any]] {
+        upsertMatchedManagedHook(
+            into: existingValue,
+            matcher: matcher,
+            hook: [
+                "type": "http",
+                "url": url,
+                "timeout": 600
+            ]
+        )
+    }
+
+    private func upsertMatchedManagedHook(
+        into existingValue: Any?,
+        matcher: String,
+        hook: [String: Any]
+    ) -> [[String: Any]] {
+        var entries = (existingValue as? [[String: Any]]) ?? []
+        var found = false
+
+        for index in entries.indices {
+            let existingMatcher = entries[index]["matcher"] as? String ?? ""
+            guard existingMatcher == matcher else {
+                continue
+            }
+
+            var hooks = (entries[index]["hooks"] as? [[String: Any]]) ?? []
+            hooks.removeAll(where: isManagedHook)
+            hooks.append(hook)
+            entries[index]["hooks"] = hooks
+            found = true
+        }
+
+        if !found {
+            entries.append([
+                "matcher": matcher,
+                "hooks": [hook]
+            ])
+        }
+
+        return entries
+    }
+
+    private func removingManagedMatchedHook(from existingValue: Any?, matcher: String) -> [[String: Any]] {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        return entries.compactMap { entry in
+            let existingMatcher = entry["matcher"] as? String ?? ""
+            guard existingMatcher == matcher else {
+                return entry
+            }
+
+            guard var hooks = entry["hooks"] as? [[String: Any]] else {
+                return nil
+            }
+
+            hooks.removeAll(where: isManagedHook)
+            guard !hooks.isEmpty else {
+                return nil
+            }
+
+            var updatedEntry = entry
+            updatedEntry["hooks"] = hooks
+            return updatedEntry
+        }
+    }
+
     private var ownedPermissionHookURLs: Set<String> {
         [
             "http://127.0.0.1:\(listenerPort)\(permissionHookPath)",
@@ -3788,10 +4496,33 @@ private final class ClaudeHookBridge: @unchecked Sendable {
         ]
     }
 
+    private var ownedQuestionHookURLs: Set<String> {
+        [
+            "http://127.0.0.1:\(listenerPort)\(questionHookPath)",
+            "http://localhost:\(listenerPort)\(questionHookPath)",
+            "http://127.0.0.1:\(listenerPort)/elicitation/hermitflow",
+            "http://localhost:\(listenerPort)/elicitation/hermitflow"
+        ]
+    }
+
+    private var ownedAskUserQuestionHookURLs: Set<String> {
+        [
+            "http://127.0.0.1:\(listenerPort)\(askUserQuestionHookPath)",
+            "http://localhost:\(listenerPort)\(askUserQuestionHookPath)"
+        ]
+    }
+
+    private var ownedManagedHookURLs: Set<String> {
+        ownedPermissionHookURLs
+            .union(ownedQuestionHookURLs)
+            .union(ownedAskUserQuestionHookURLs)
+    }
+
     private func settingsContainsManagedHooks(_ settings: [String: Any]) -> Bool {
         guard let hooks = settings["hooks"] as? [String: Any] else {
             return false
         }
+        let askUserQuestionMode = askUserQuestionHandlingMode()
 
         let commandEvents = [
             "SessionStart",
@@ -3807,7 +4538,6 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             "PreCompact",
             "PostCompact",
             "Notification",
-            "Elicitation",
             "WorktreeCreate"
         ]
 
@@ -3815,8 +4545,16 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             containsManagedCommandHook(hooks[event])
         }
         let hasManagedPermissionHook = containsManagedPermissionHook(hooks["PermissionRequest"])
+        let hasManagedQuestionHook = containsManagedQuestionHook(hooks["Elicitation"])
+        let hasManagedAskUserQuestionHook = askUserQuestionMode == .takeOver
+            ? containsManagedAskUserQuestionHook(hooks["PreToolUse"])
+            : true
         let hasManagedStatusLine = containsManagedStatusLine(settings["statusLine"])
-        return hasManagedCommands && hasManagedPermissionHook && hasManagedStatusLine
+        return hasManagedCommands
+            && hasManagedPermissionHook
+            && hasManagedQuestionHook
+            && hasManagedAskUserQuestionHook
+            && hasManagedStatusLine
     }
 
     private func containsManagedCommandHook(_ existingValue: Any?) -> Bool {
@@ -3826,7 +4564,12 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 continue
             }
 
-            if hooks.contains(where: isManagedHook) {
+            if hooks.contains(where: { hook in
+                if let command = hook["command"] as? String {
+                    return command.contains(hookMarker)
+                }
+                return false
+            }) {
                 return true
             }
         }
@@ -3846,6 +4589,41 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 }
                 return false
             }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func containsManagedQuestionHook(_ existingValue: Any?) -> Bool {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        for entry in entries {
+            guard let hooks = entry["hooks"] as? [[String: Any]] else {
+                continue
+            }
+
+            if hooks.contains(where: { hook in
+                if let url = hook["url"] as? String {
+                    return ownedQuestionHookURLs.contains(url)
+                }
+                return false
+            }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func containsManagedAskUserQuestionHook(_ existingValue: Any?) -> Bool {
+        let entries = (existingValue as? [[String: Any]]) ?? []
+        for entry in entries {
+            let matcher = entry["matcher"] as? String ?? ""
+            guard matcher == "AskUserQuestion",
+                  let hooks = entry["hooks"] as? [[String: Any]] else {
+                continue
+            }
+
+            if hooks.contains(where: isManagedHook) {
                 return true
             }
         }
@@ -3873,7 +4651,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
             return true
         }
 
-        if let url = hook["url"] as? String, ownedPermissionHookURLs.contains(url) {
+        if let url = hook["url"] as? String, ownedManagedHookURLs.contains(url) {
             return true
         }
 
@@ -4180,6 +4958,27 @@ private final class ClaudePendingApproval {
     }
 }
 
+private final class ClaudePendingQuestion {
+    enum Source {
+        case elicitation(ClaudeHookElicitationPayload)
+        case askUserQuestion(ClaudeHookAskUserQuestionPayload)
+    }
+
+    let prompt: ClaudeQuestionPrompt
+    let source: Source
+    var connection: NWConnection?
+
+    init(
+        prompt: ClaudeQuestionPrompt,
+        source: Source,
+        connection: NWConnection?
+    ) {
+        self.prompt = prompt
+        self.source = source
+        self.connection = connection
+    }
+}
+
 private struct ParsedHTTPRequest {
     let method: String
     let path: String
@@ -4205,6 +5004,46 @@ private struct ClaudeHookEventPayload: Decodable {
         case clientOrigin = "client_origin"
         case terminalClient = "terminal_client"
         case terminalSessionHint = "terminal_session_hint"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        event = try container.decode(String.self, forKey: .event)
+        state = try container.decode(String.self, forKey: .state)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+        cwd = try container.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        clientOrigin = container.decodeLossyRawRepresentable(FocusClientOrigin.self, forKey: .clientOrigin)
+        terminalClient = container.decodeLossyRawRepresentable(TerminalClient.self, forKey: .terminalClient)
+        terminalSessionHint = container.decodeNormalizedOptionalString(forKey: .terminalSessionHint)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeNormalizedOptionalString(forKey key: Key) -> String? {
+        let rawValue: String?
+        do {
+            rawValue = try decodeIfPresent(String.self, forKey: key)
+        } catch {
+            return nil
+        }
+
+        guard let rawValue else {
+            return nil
+        }
+
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    func decodeLossyRawRepresentable<T: RawRepresentable>(_ type: T.Type, forKey key: Key) -> T?
+    where T.RawValue == String {
+        guard let rawValue = decodeNormalizedOptionalString(forKey: key) else {
+            return nil
+        }
+
+        return T(rawValue: rawValue)
     }
 }
 
@@ -4257,6 +5096,222 @@ private struct ClaudeHookPermissionPayload: Decodable {
         case toolName = "tool_name"
         case toolInput = "tool_input"
         case permissionSuggestions = "permission_suggestions"
+    }
+}
+
+private struct ClaudeHookElicitationPayload: Decodable {
+    let sessionID: String
+    let mcpServerName: String
+    let elicitationID: String?
+    let title: String?
+    let message: String?
+    let detail: String?
+    let timeoutSeconds: Int?
+    let requestedSchema: ClaudeQuestionSchema?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case mcpServerName = "mcp_server_name"
+        case elicitationID = "elicitation_id"
+        case title
+        case message
+        case detail
+        case timeoutSeconds = "timeout_seconds"
+        case requestedSchema = "requested_schema"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+        mcpServerName = try container.decodeIfPresent(String.self, forKey: .mcpServerName) ?? ""
+        elicitationID = container.decodeNormalizedOptionalString(forKey: .elicitationID)
+        title = container.decodeNormalizedOptionalString(forKey: .title)
+        message = container.decodeNormalizedOptionalString(forKey: .message)
+        detail = container.decodeNormalizedOptionalString(forKey: .detail)
+        timeoutSeconds = try? container.decodeIfPresent(Int.self, forKey: .timeoutSeconds)
+        requestedSchema = try? container.decodeIfPresent(ClaudeQuestionSchema.self, forKey: .requestedSchema)
+    }
+}
+
+private struct ClaudeHookAskUserQuestionPayload: Decodable {
+    struct ToolInput: Decodable {
+        struct Question: Decodable {
+            struct Option: Decodable {
+                let label: String
+                let description: String?
+            }
+
+            let question: String
+            let header: String?
+            let multiSelect: Bool
+            let options: [Option]
+        }
+
+        let questions: [Question]
+
+        var jsonObject: [String: Any] {
+            [
+                "questions": questions.map { question in
+                    var object: [String: Any] = [
+                        "question": question.question,
+                        "multiSelect": question.multiSelect,
+                        "options": question.options.map { option in
+                            var optionObject: [String: Any] = [
+                                "label": option.label
+                            ]
+                            if let description = option.description {
+                                optionObject["description"] = description
+                            }
+                            return optionObject
+                        }
+                    ]
+                    if let header = question.header {
+                        object["header"] = header
+                    }
+                    return object
+                }
+            ]
+        }
+    }
+
+    let sessionID: String
+    let cwd: String
+    let toolName: String
+    let toolUseID: String?
+    let toolInput: ToolInput?
+
+    private enum CodingKeys: String, CodingKey {
+        case sessionID = "session_id"
+        case cwd
+        case toolName = "tool_name"
+        case toolUseID = "tool_use_id"
+        case toolInput = "tool_input"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID) ?? ""
+        cwd = try container.decodeIfPresent(String.self, forKey: .cwd) ?? ""
+        toolName = try container.decodeIfPresent(String.self, forKey: .toolName) ?? ""
+        toolUseID = container.decodeNormalizedOptionalString(forKey: .toolUseID)
+        toolInput = try? container.decodeIfPresent(ToolInput.self, forKey: .toolInput)
+    }
+}
+
+private struct ClaudeQuestionSchema: Decodable {
+    struct Field: Decodable {
+        let name: String
+        let title: String?
+        let description: String?
+        let enumValues: [String]
+        let defaultValue: String?
+        let placeholder: String?
+        let type: String?
+
+        var allowsFreeText: Bool {
+            enumValues.isEmpty
+        }
+
+        var options: [QuestionOption] {
+            enumValues.enumerated().map { index, value in
+                QuestionOption(
+                    id: "\(name)-\(index)",
+                    title: value,
+                    detail: description,
+                    value: value,
+                    isDefault: value == defaultValue
+                )
+            }
+        }
+    }
+
+    let primaryField: Field?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let object = try container.decode([String: AnyDecodable].self)
+        let properties = object["properties"]?.dictionaryValue ?? [:]
+        let required = Set(object["required"]?.arrayValue?.compactMap(\.stringValue) ?? [])
+
+        let fields: [Field] = properties.compactMap { (entry: Dictionary<String, AnyDecodable>.Element) -> Field? in
+            let key = entry.key
+            let value = entry.value
+            guard let dictionary = value.dictionaryValue else {
+                return nil
+            }
+
+            let enumValues = dictionary["enum"]?.arrayValue?.compactMap(\.stringValue) ?? []
+            let title = dictionary["title"]?.stringValue
+            let description = dictionary["description"]?.stringValue
+            let defaultValue = dictionary["default"]?.stringValue
+            let placeholder = dictionary["placeholder"]?.stringValue
+            let type = dictionary["type"]?.stringValue
+
+            return Field(
+                name: key,
+                title: title,
+                description: description,
+                enumValues: enumValues,
+                defaultValue: defaultValue,
+                placeholder: placeholder,
+                type: type
+            )
+        }
+        primaryField = fields.sorted { (lhs: Field, rhs: Field) in
+            let lhsRequired = required.contains(lhs.name) ? 0 : 1
+            let rhsRequired = required.contains(rhs.name) ? 0 : 1
+            if lhsRequired != rhsRequired {
+                return lhsRequired < rhsRequired
+            }
+            return lhs.name < rhs.name
+        }
+        .first
+    }
+}
+
+private struct AnyDecodable: Decodable {
+    let value: Any
+
+    var dictionaryValue: [String: AnyDecodable]? { value as? [String: AnyDecodable] }
+    var arrayValue: [AnyDecodable]? { value as? [AnyDecodable] }
+    var stringValue: String? { value as? String }
+
+    init(from decoder: Decoder) throws {
+        if let container = try? decoder.singleValueContainer() {
+            if let dictionary = try? container.decode([String: AnyDecodable].self) {
+                value = dictionary
+                return
+            }
+            if let array = try? container.decode([AnyDecodable].self) {
+                value = array
+                return
+            }
+            if let string = try? container.decode(String.self) {
+                value = string
+                return
+            }
+            if let int = try? container.decode(Int.self) {
+                value = int
+                return
+            }
+            if let double = try? container.decode(Double.self) {
+                value = double
+                return
+            }
+            if let bool = try? container.decode(Bool.self) {
+                value = bool
+                return
+            }
+        }
+
+        value = NSNull()
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

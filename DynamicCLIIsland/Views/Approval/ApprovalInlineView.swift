@@ -87,6 +87,14 @@ struct ApprovalInlineView: View {
                         .truncationMode(.tail)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    if let supplementalRationaleText {
+                        Text(supplementalRationaleText)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(Color.white.opacity(0.72))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     Text(timestampText)
                         .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundStyle(Color(red: 0.44, green: 0.44, blue: 0.48))
@@ -212,6 +220,19 @@ struct ApprovalInlineView: View {
         }
     }
 
+    private var supplementalRationaleText: String? {
+        guard let rationale = request.displayRationale else {
+            return nil
+        }
+
+        let normalizedPrimaryTitle = primaryTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard rationale != normalizedPrimaryTitle else {
+            return nil
+        }
+
+        return rationale
+    }
+
     private var commandSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
@@ -235,8 +256,8 @@ struct ApprovalInlineView: View {
                 GeometryReader { geometry in
                     ScrollView(.vertical, showsIndicators: true) {
                         Text(commandDisplayText)
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundStyle(.white)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(commandForegroundColor)
                             .textSelection(.enabled)
                             .frame(width: max(geometry.size.width, 1), alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -247,8 +268,8 @@ struct ApprovalInlineView: View {
                 .id("command-expanded")
             } else {
                 Text(commandDisplayText)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(commandForegroundColor)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .id("command-collapsed")
@@ -260,6 +281,21 @@ struct ApprovalInlineView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.black.opacity(0.4))
         )
+    }
+
+    private var commandAccentColor: Color {
+        switch request.source.provider {
+        case .claude:
+            return Color(red: 1.00, green: 0.77, blue: 0.50)
+        case .codex:
+            return Color(red: 0.63, green: 0.88, blue: 1.00)
+        case .generic:
+            return Color(red: 0.74, green: 0.84, blue: 1.00)
+        }
+    }
+
+    private var commandForegroundColor: Color {
+        commandAccentColor.opacity(0.98)
     }
 
     private func decisionButton(

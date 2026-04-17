@@ -54,15 +54,15 @@ struct ApprovalPanelView: View {
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
 
-                sectionBlock(title: "Command", systemImage: "terminal", tint: Color(red: 0.48, green: 0.84, blue: 0.99), background: Color.black.opacity(0.5)) {
+                sectionBlock(title: "Command", systemImage: "terminal", tint: Color.white.opacity(0.56), background: Color.black.opacity(0.5)) {
                     Text(request.commandText.isEmpty ? (request.commandSummary.isEmpty ? "Waiting for command detail" : request.commandSummary) : request.commandText)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.white.opacity(0.92))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(commandForegroundColor)
                         .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                if let rationale = request.rationale, !rationale.isEmpty {
+                if let rationale = request.displayRationale {
                     sectionBlock(title: "Reason", systemImage: "text.alignleft", tint: Color(red: 0.99, green: 0.80, blue: 0.46), background: Color.white.opacity(0.05)) {
                         Text(rationale)
                             .font(.system(size: 11, weight: .regular))
@@ -178,6 +178,21 @@ struct ApprovalPanelView: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(request.source.provider.tint.opacity(0.14))
             )
+    }
+
+    private var commandAccentColor: Color {
+        switch request.source.provider {
+        case .claude:
+            return Color(red: 1.00, green: 0.77, blue: 0.50)
+        case .codex:
+            return Color(red: 0.63, green: 0.88, blue: 1.00)
+        case .generic:
+            return Color(red: 0.74, green: 0.84, blue: 1.00)
+        }
+    }
+
+    private var commandForegroundColor: Color {
+        commandAccentColor.opacity(0.98)
     }
 
     private func sectionBlock<Content: View>(

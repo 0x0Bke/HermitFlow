@@ -22,6 +22,70 @@ enum ApprovalDefaultFocusOption: String, CaseIterable {
     }
 }
 
+enum UsageDisplayType: String, CaseIterable {
+    case remaining
+    case used
+
+    var menuTitle: String {
+        switch self {
+        case .remaining:
+            return "剩余量"
+        case .used:
+            return "使用量"
+        }
+    }
+
+    var englishSubtitleSuffix: String {
+        switch self {
+        case .remaining:
+            return "remaining"
+        case .used:
+            return "used"
+        }
+    }
+
+    func percentageText(used: Int, remaining: Int) -> String {
+        switch self {
+        case .remaining:
+            return "\(remaining)%"
+        case .used:
+            return "\(used)%"
+        }
+    }
+
+    func percentageValue(used: Double, remaining: Double) -> Double {
+        switch self {
+        case .remaining:
+            return remaining
+        case .used:
+            return used
+        }
+    }
+}
+
+enum AskUserQuestionHandlingMode: String, CaseIterable {
+    case takeOver
+    case mirror
+
+    var menuTitle: String {
+        switch self {
+        case .takeOver:
+            return "HermitFlow 回答"
+        case .mirror:
+            return "Claude 原生回答"
+        }
+    }
+
+    var promptHint: String? {
+        switch self {
+        case .takeOver:
+            return "Answer here to send the response back to Claude Code."
+        case .mirror:
+            return "Answer in Claude CLI or the Claude extension. HermitFlow is mirroring this prompt only."
+        }
+    }
+}
+
 @MainActor
 final class PresentationStore: ObservableObject {
     typealias BrandLogo = IslandBrandLogo
@@ -60,24 +124,29 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var inlineApprovalCommandExpanded = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
-    @Published private(set) var customNotificationSoundPath: String?
+    @Published private(set) var customApprovalNotificationSoundPath: String?
+    @Published private(set) var customCompletionNotificationSoundPath: String?
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
+    @Published private(set) var usageDisplayType: UsageDisplayType
 
     private let compactHeightOverscan: CGFloat = 2.5
     private let inlineApprovalMinimumHeight: CGFloat = 300
     private let inlineApprovalExpandedHeight: CGFloat = 460
     private let inlineApprovalIslandFixedWidth: CGFloat = 560
+    private let inlineQuestionCompactHeight: CGFloat = 350
+    private let inlineQuestionExpandedHeight: CGFloat = 430
+    private let inlineQuestionIslandFixedWidth: CGFloat = 560
     private let externalDisplayCompactWidthMultiplier: CGFloat = 1.6
     private let externalDisplayPanelWidthMultiplier: CGFloat = 1.2
     private let externalDisplayIslandMaxWidth: CGFloat = 392
     private let externalDisplayInlineApprovalMaxWidth: CGFloat = 500
+    private let externalDisplayInlineQuestionMaxWidth: CGFloat = 500
     private let externalDisplayPanelMaxWidthWithoutApproval: CGFloat = 560
     private let externalDisplayPanelMaxWidthWithApproval: CGFloat = 640
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
     private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
-    private let customNotificationSoundPathDefaultsKey = NotificationSoundPlayer.customSoundPathDefaultsKey
-    private let customNotificationSoundBookmarkDefaultsKey = NotificationSoundPlayer.customSoundBookmarkDefaultsKey
     private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
+    private let usageDisplayTypeDefaultsKey = "HermitFlow.usageDisplayType"
 
     // TODO: These timing fields are still coupled to legacy AppDelegate behaviors.
     private var hasHoveredInsidePanelSinceShown = false
@@ -88,6 +157,7 @@ final class PresentationStore: ObservableObject {
 
     // TODO: Remove these temporary runtime mirrors once the views read from AppStore directly.
     private var currentApprovalRequest: ApprovalRequest?
+    private var currentQuestionPrompt: ClaudeQuestionPrompt?
     private var currentSessions: [AgentSessionSnapshot] = []
     private var currentUsageCardCount = 0
 
@@ -99,11 +169,17 @@ final class PresentationStore: ObservableObject {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
         isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
-        customNotificationSoundPath = Self.normalizedCustomSoundPath(
-            UserDefaults.standard.string(forKey: customNotificationSoundPathDefaultsKey)
+        Self.migrateLegacyNotificationSoundSettingsIfNeeded()
+        customApprovalNotificationSoundPath = Self.normalizedCustomSoundPath(
+            UserDefaults.standard.string(forKey: NotificationSoundKind.approval.customSoundPathDefaultsKey)
+        )
+        customCompletionNotificationSoundPath = Self.normalizedCustomSoundPath(
+            UserDefaults.standard.string(forKey: NotificationSoundKind.completion.customSoundPathDefaultsKey)
         )
         let storedApprovalDefaultFocus = UserDefaults.standard.string(forKey: approvalDefaultFocusDefaultsKey)
         approvalDefaultFocus = ApprovalDefaultFocusOption(rawValue: storedApprovalDefaultFocus ?? "") ?? .accept
+        let storedUsageDisplayType = UserDefaults.standard.string(forKey: usageDisplayTypeDefaultsKey)
+        usageDisplayType = UsageDisplayType(rawValue: storedUsageDisplayType ?? "") ?? .remaining
     }
 
     var windowSize: CGSize {
@@ -130,21 +206,50 @@ final class PresentationStore: ObservableObject {
     }
 
     var hasInlineApprovalIsland: Bool {
-        displayMode == .island && isInlineApprovalExpanded
+        displayMode == .island && prioritizedInlineContent == .approval
+    }
+
+    var hasInlineQuestionIsland: Bool {
+        displayMode == .island && prioritizedInlineContent == .question
     }
 
     private var isInlineApprovalExpanded: Bool {
         currentApprovalRequest != nil && collapsedInlineApprovalID != currentApprovalRequest?.id
     }
 
+    private var prioritizedInlineContent: PrioritizedInlineContent? {
+        let inlineApprovalRequest = isInlineApprovalExpanded ? currentApprovalRequest : nil
+
+        switch (inlineApprovalRequest, currentQuestionPrompt) {
+        case let (approval?, question?):
+            return approval.createdAt >= question.createdAt ? .approval : .question
+        case (.some, nil):
+            return .approval
+        case (nil, .some):
+            return .question
+        case (nil, nil):
+            return nil
+        }
+    }
+
     private var islandWidth: CGFloat {
-        if isInlineApprovalExpanded {
+        switch prioritizedInlineContent {
+        case .approval:
             let width = inlineApprovalIslandFixedWidth
             guard usesExternalDisplayLayout else {
                 return width
             }
 
             return min(width, externalDisplayInlineApprovalMaxWidth)
+        case .question:
+            let width = inlineQuestionIslandFixedWidth
+            guard usesExternalDisplayLayout else {
+                return width
+            }
+
+            return min(width, externalDisplayInlineQuestionMaxWidth)
+        case .none:
+            break
         }
 
         let baseWidth = max(
@@ -162,9 +267,17 @@ final class PresentationStore: ObservableObject {
     }
 
     private var islandHeight: CGFloat {
-        if isInlineApprovalExpanded {
+        switch prioritizedInlineContent {
+        case .approval:
             let minimumHeight = inlineApprovalCommandExpanded ? inlineApprovalExpandedHeight : inlineApprovalMinimumHeight
             return max(compactHeight, minimumHeight)
+        case .question:
+            let minimumHeight = currentQuestionPrompt?.allowsFreeText == true
+                ? inlineQuestionExpandedHeight
+                : inlineQuestionCompactHeight
+            return max(compactHeight, minimumHeight)
+        case .none:
+            break
         }
 
         return compactHeight
@@ -388,21 +501,60 @@ final class PresentationStore: ObservableObject {
         UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
     }
 
-    func setCustomNotificationSoundPath(_ path: String?) {
+    func setCustomNotificationSoundPath(_ path: String?, for kind: NotificationSoundKind) {
         let normalizedPath = Self.normalizedCustomSoundPath(path)
-        guard customNotificationSoundPath != normalizedPath else {
+        switch kind {
+        case .approval:
+            guard customApprovalNotificationSoundPath != normalizedPath else {
+                return
+            }
+            customApprovalNotificationSoundPath = normalizedPath
+        case .completion:
+            guard customCompletionNotificationSoundPath != normalizedPath else {
+                return
+            }
+            customCompletionNotificationSoundPath = normalizedPath
+        }
+
+        let defaults = UserDefaults.standard
+        if let normalizedPath {
+            defaults.set(normalizedPath, forKey: kind.customSoundPathDefaultsKey)
+        } else {
+            defaults.removeObject(forKey: kind.customSoundPathDefaultsKey)
+            defaults.removeObject(forKey: kind.customSoundBookmarkDefaultsKey)
+            try? FileManager.default.removeItem(at: kind.customFileURL)
+        }
+    }
+
+    private static func migrateLegacyNotificationSoundSettingsIfNeeded() {
+        let defaults = UserDefaults.standard
+        let approvalPathKey = NotificationSoundKind.approval.customSoundPathDefaultsKey
+        let approvalBookmarkKey = NotificationSoundKind.approval.customSoundBookmarkDefaultsKey
+        let legacyPathKey = "HermitFlow.customNotificationSoundPath"
+        let legacyBookmarkKey = "HermitFlow.customNotificationSoundBookmark"
+
+        guard defaults.string(forKey: approvalPathKey) == nil,
+              defaults.data(forKey: approvalBookmarkKey) == nil else {
             return
         }
 
-        customNotificationSoundPath = normalizedPath
-
-        if let normalizedPath {
-            UserDefaults.standard.set(normalizedPath, forKey: customNotificationSoundPathDefaultsKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: customNotificationSoundPathDefaultsKey)
-            UserDefaults.standard.removeObject(forKey: customNotificationSoundBookmarkDefaultsKey)
-            try? FileManager.default.removeItem(at: FilePaths.customNotificationSound)
+        if let legacyPath = defaults.string(forKey: legacyPathKey), !legacyPath.isEmpty {
+            defaults.set(legacyPath, forKey: approvalPathKey)
         }
+
+        if let legacyBookmark = defaults.data(forKey: legacyBookmarkKey) {
+            defaults.set(legacyBookmark, forKey: approvalBookmarkKey)
+        }
+
+        let legacyCustomURL = FilePaths.notificationSoundsDirectory
+            .appendingPathComponent("Custom", isDirectory: false)
+        if FileManager.default.fileExists(atPath: legacyCustomURL.path),
+           !FileManager.default.fileExists(atPath: FilePaths.customApprovalNotificationSound.path) {
+            try? FileManager.default.moveItem(at: legacyCustomURL, to: FilePaths.customApprovalNotificationSound)
+        }
+
+        defaults.removeObject(forKey: legacyPathKey)
+        defaults.removeObject(forKey: legacyBookmarkKey)
     }
 
     func setApprovalDefaultFocus(_ option: ApprovalDefaultFocusOption) {
@@ -412,6 +564,15 @@ final class PresentationStore: ObservableObject {
 
         approvalDefaultFocus = option
         UserDefaults.standard.set(option.rawValue, forKey: approvalDefaultFocusDefaultsKey)
+    }
+
+    func setUsageDisplayType(_ type: UsageDisplayType) {
+        guard usageDisplayType != type else {
+            return
+        }
+
+        usageDisplayType = type
+        UserDefaults.standard.set(type.rawValue, forKey: usageDisplayTypeDefaultsKey)
     }
 
     func syncRuntimeContext(
@@ -425,6 +586,10 @@ final class PresentationStore: ObservableObject {
         currentApprovalRequest = approvalRequest
         currentSessions = sessions
         currentUsageCardCount = usageCardCount
+    }
+
+    func syncQuestionPrompt(_ prompt: ClaudeQuestionPrompt?) {
+        currentQuestionPrompt = prompt
     }
 
     func resetCollapsedInlineApproval() {
@@ -534,5 +699,12 @@ final class PresentationStore: ObservableObject {
         windowResizeAnimation = animation
         onWindowSizeChange?(windowSize)
         windowResizeAnimation = .none
+    }
+}
+
+private extension PresentationStore {
+    enum PrioritizedInlineContent {
+        case approval
+        case question
     }
 }

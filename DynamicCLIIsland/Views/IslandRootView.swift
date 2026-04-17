@@ -46,6 +46,8 @@ struct IslandRootView: View {
         if shouldHoldPanelBody {
             expandedBody
                 .allowsHitTesting(store.displayMode == .panel)
+        } else if store.hasInlineQuestionIsland, let prompt = store.activeQuestionPrompt {
+            inlineQuestionBody(prompt)
         } else if store.hasInlineApprovalIsland, let approvalRequest = store.approvalRequest {
             inlineApprovalBody(approvalRequest)
         } else if store.displayMode == .panel {
@@ -106,7 +108,7 @@ struct IslandRootView: View {
     }
 
     private var shouldBlockCompactGestureOverlay: Bool {
-        store.displayMode == .panel || store.hasInlineApprovalIsland || activePanelTransition != nil
+        store.displayMode == .panel || store.hasInlineApprovalIsland || store.hasInlineQuestionIsland || activePanelTransition != nil
     }
 
     private var railWidth: CGFloat {
@@ -124,6 +126,15 @@ struct IslandRootView: View {
             timestampText: relativeTimestamp(for: request.createdAt),
             diagnosticMessage: store.approvalDiagnosticMessage,
             defaultFocus: store.approvalDefaultFocus
+        )
+    }
+
+    private func inlineQuestionBody(_ prompt: ClaudeQuestionPrompt) -> some View {
+        QuestionInlineView(
+            store: store,
+            prompt: prompt,
+            header: AnyView(islandHeader),
+            timestampText: relativeTimestamp(for: prompt.createdAt)
         )
     }
 
@@ -171,8 +182,24 @@ struct IslandRootView: View {
                     errorCard(message: errorMessage)
                 }
 
+                if let questionErrorMessage = store.questionErrorMessage, store.activeQuestionPrompt == nil {
+                    errorCard(message: questionErrorMessage)
+                }
+
+                if store.questionPresentationMode == .panel,
+                   let prompt = store.activeQuestionPrompt,
+                   shouldPrioritizeQuestionPrompt(prompt) {
+                    questionCard(prompt)
+                }
+
                 if let approvalRequest = store.approvalRequest {
                     approvalCard(approvalRequest)
+                }
+
+                if store.questionPresentationMode == .panel,
+                   let prompt = store.activeQuestionPrompt,
+                   !shouldPrioritizeQuestionPrompt(prompt) {
+                    questionCard(prompt)
                 }
 
                 if store.sessions.isEmpty {
@@ -390,9 +417,9 @@ private extension IslandRootView {
                 usageProviderRow(
                     title: "Codex",
                     shortLabel: "5h",
-                    shortValue: codexWindow(minutes: 300, in: codexUsageSnapshot)?.leftPercentage,
+                    shortValue: displayedPercentage(for: codexWindow(minutes: 300, in: codexUsageSnapshot)),
                     longLabel: "wk",
-                    longValue: codexWindow(minutes: 10_080, in: codexUsageSnapshot)?.leftPercentage
+                    longValue: displayedPercentage(for: codexWindow(minutes: 10_080, in: codexUsageSnapshot))
                 )
             }
         }
@@ -426,7 +453,7 @@ private extension IslandRootView {
                 .frame(width: 108, alignment: .leading)
 
             ForEach(windows, id: \.id) { item in
-                usageMetricChip(label: item.label, value: item.window.leftPercentage)
+                usageMetricChip(label: item.label, value: displayedPercentage(for: item.window))
             }
         }
     }
@@ -485,6 +512,18 @@ private extension IslandRootView {
         snapshot.windows.first { $0.windowMinutes == minutes }
     }
 
+    func displayedPercentage(for window: ClaudeUsageWindow) -> Double {
+        store.usageDisplayType.percentageValue(used: window.usedPercentage, remaining: window.leftPercentage)
+    }
+
+    func displayedPercentage(for window: CodexUsageWindow?) -> Double? {
+        guard let window else {
+            return nil
+        }
+
+        return store.usageDisplayType.percentageValue(used: window.usedPercentage, remaining: window.leftPercentage)
+    }
+
     func approvalCard(_ request: ApprovalRequest) -> some View {
         ApprovalPanelView(
             store: store,
@@ -493,6 +532,16 @@ private extension IslandRootView {
             primaryTitle: approvalPrimaryTitle(for: request),
             timestampText: relativeTimestamp(for: request.createdAt),
             diagnosticMessage: store.approvalDiagnosticMessage
+        )
+    }
+
+    func questionCard(_ prompt: ClaudeQuestionPrompt) -> some View {
+        QuestionPanelView(
+            prompt: prompt,
+            questionStore: store.questionInputStore,
+            timestampText: relativeTimestamp(for: prompt.createdAt),
+            onSubmit: store.submitQuestionAnswer,
+            onDismiss: store.dismissQuestionPrompt
         )
     }
 
@@ -816,39 +865,21 @@ private extension IslandRootView {
     }
 
     func approvalPrimaryTitle(for request: ApprovalRequest) -> String {
-        if let rationale = request.rationale?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !rationale.isEmpty {
+        if let contextTitle = request.contextTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !contextTitle.isEmpty {
+            return contextTitle
+        }
+
+        let commandSummary = request.commandSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !commandSummary.isEmpty {
+            return commandSummary
+        }
+
+        if let rationale = request.displayRationale {
             return rationale
         }
 
-        if request.commandSummary.isEmpty {
-            return approvalConversationTitle(for: request) ?? "Waiting for command detail"
-        }
-
-        return request.commandSummary
-    }
-
-    func approvalConversationTitle(for request: ApprovalRequest) -> String? {
-        if let sessionID = request.focusTarget?.sessionID {
-            if let matchedSession = store.sessions.first(where: {
-                $0.id == sessionID || $0.focusTarget?.sessionID == sessionID
-            }) {
-                return matchedSession.title
-            }
-        }
-
-        if let displayName = request.focusTarget?.displayName,
-           let matchedSession = store.sessions.first(where: {
-               $0.focusTarget?.displayName == displayName
-           }) {
-            return matchedSession.title
-        }
-
-        if let matchedSession = store.sessions.first(where: { $0.origin == request.source }) {
-            return matchedSession.title
-        }
-
-        return nil
+        return "Waiting for command detail"
     }
 
     func approvalSessionTitle(for request: ApprovalRequest) -> String {
@@ -875,6 +906,14 @@ private extension IslandRootView {
 
         let hours = minutes / 60
         return "\(hours)h ago"
+    }
+
+    func shouldPrioritizeQuestionPrompt(_ prompt: ClaudeQuestionPrompt) -> Bool {
+        guard let approvalRequest = store.approvalRequest else {
+            return true
+        }
+
+        return prompt.createdAt >= approvalRequest.createdAt
     }
 }
 

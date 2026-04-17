@@ -1,5 +1,9 @@
 # HermitFlow
 
+<p align="center">
+  <img src="DynamicCLIIsland/Assets.xcassets/AppIcon.appiconset/icon_512x512.png" alt="HermitFlow App Icon" width="144">
+</p>
+
 [English](README.md) | [简体中文](README_ZH.md)
 
 HermitFlow is a SwiftUI-based macOS top island app that surfaces local `Claude Code`, `Codex`, and other CLI session activity, approval requests, and quick focus targets.
@@ -22,6 +26,7 @@ Together, the name describes AI and task flows that live inside the system and k
 - Aggregates recent local sessions from both `Claude Code` and `Codex`
 - Shows session origin, working directory, runtime status, and last update time
 - Detects approval requests and lets you handle them directly from the island or panel
+- Detects Claude question prompts and supports both in-app answering and native Claude mirroring
 - Inline approval supports keyboard selection and confirmation
 - Reads local-first usage snapshots for both `Claude Code` and `Codex`
 - Renders Claude/Codex usage bars in the expanded panel without requiring network access
@@ -36,23 +41,31 @@ Together, the name describes AI and task flows that live inside the system and k
 
 ### Idle
 
-![HermitFlow idle state](docs/images/idle.png)
+![HermitFlow idle](docs/images/idle.png)
 
 ### Panel
 
-![HermitFlow Panel](docs/images/panel.png)
+![HermitFlow panel overview](docs/images/panel.png)
 
 ### Running
 
-![HermitFlow running state](docs/images/running.png)
+![HermitFlow running](docs/images/running.png)
 
 ### Approval Request
 
 ![HermitFlow approval request](docs/images/approval.png)
 
-### Approval Success
+### Success
 
-![HermitFlow approval success](docs/images/success.png)
+![HermitFlow success](docs/images/success.png)
+
+### Ask Question
+
+![HermitFlow ask question](docs/images/ask.png)
+
+### Settings
+
+![HermitFlow settings](docs/images/settings.png)
 
 ## How It Works
 
@@ -87,8 +100,18 @@ In practice:
 
 - State events are reported through local command hooks
 - Approval requests are sent back to HermitFlow through a local HTTP hook
+- Claude question prompts are mirrored into HermitFlow through local HTTP hooks
 - The HermitFlow-specific approval callback path is `/permission/hermitflow`
+- The Elicitation callback path is `/question/hermitflow`
+- The AskUserQuestion takeover callback path is `/ask-user/hermitflow`
 - Claude approvals do not require macOS Accessibility permissions
+
+Claude question handling supports two modes:
+
+- `HermitFlow Answer`: intercepts `AskUserQuestion`, lets you choose a preset option or type a custom answer in HermitFlow, then sends the answer back to Claude
+- `Claude Native Answer`: keeps Claude's native `AskUserQuestion` flow active and shows a mirrored prompt in HermitFlow so you can keep context while answering in Claude CLI or the Claude extension
+
+For a code-level walkthrough of the current Claude state pipeline, see [docs/claude-state-flow.md](docs/claude-state-flow.md).
 
 If `node` is not available on the machine, Claude hook integration will not work.
 
@@ -128,8 +151,10 @@ If Claude hook initialization fails, the app still runs, but Claude Code status 
 - Double-click the island: island/panel -> hidden
 - Open the panel to inspect recent sessions, approval requests, and session details
 - Approval cards in the panel can be handled directly with `Deny`, `Allow Once`, and `Always Allow`
+- Claude question cards can appear in the island or panel when Claude needs input
 - The expanded panel can also show local usage bars for `Claude` and `Codex`
 - When an approval request exists, the island expands into an inline approval card
+- When a Claude question prompt exists, the island can expand into an inline question card
 - In the inline approval card, use `Left` / `Right` to switch the selected action and `Return` to confirm it
 - If an approval is handled directly in the terminal, HermitFlow collapses the approval UI after the local sources observe that the request has been resolved or has disappeared
 - The `Diagnostic` card shows Claude hook sync failures
@@ -137,6 +162,13 @@ If Claude hook initialization fails, the app still runs, but Claude Code status 
 - Use the focus button on a session or approval card to bring the related `Claude Code` / `Codex` client forward
 - For `Claude Code` terminal sessions, HermitFlow can also try to route to the matching `iTerm` tab/session or `Warp` window when local session hints are available
 - Use the status bar icon to show/hide the window and switch the left-side logo
+
+### Question Handling
+
+HermitFlow supports two Claude question workflows, and the current mode can be switched from the panel quick settings:
+
+- `HermitFlow Answer`: the question card is interactive, so you can click a suggested option or type another answer and submit it without leaving HermitFlow
+- `Claude Native Answer`: HermitFlow mirrors the prompt for visibility only; the answer must be completed in Claude CLI or the Claude extension
 
 ### Usage Section
 
@@ -153,7 +185,7 @@ The usage section is local-first and optional:
 - if `~/.hermitflow/claude-provider-usage.json` defines a top-level command-based usage query, HermitFlow uses only that command for Claude usage
 - if that command fails, times out, or returns an invalid percentage, Claude usage is hidden and HermitFlow does not fall back to the provider HTTP request
 
-The current UI shows remaining quota rather than used quota.
+The current UI defaults to showing remaining quota, and can be switched to used quota in Settings.
 
 For Claude, usage visibility depends on either the local payload shape, a top-level command-based usage query in `~/.hermitflow/claude-provider-usage.json`, or a supported third-party provider response. Official Claude-style `rate_limits.five_hour` and `rate_limits.seven_day` fields are rendered as `5h` and `wk`. Command-based queries can also emit a custom `day` window; when present, the Claude UI shows only `day` and hides the default `5h` / `wk` labels. Some third-party Anthropic-compatible models expose only context-window data or omit rate-limit fields entirely, in which case Claude usage will be absent even though Claude activity and approvals still work.
 
