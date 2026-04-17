@@ -5,20 +5,26 @@ struct QuestionTextInputView: View {
     @ObservedObject var questionStore: QuestionStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your Answer")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.56))
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(accentGreen)
+
+                Text("Your Answer")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.62))
+            }
 
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.black.opacity(0.32))
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color(red: 0.08, green: 0.10, blue: 0.10))
 
                 if questionStore.textAnswer.isEmpty, let placeholder = prompt.placeholder, !placeholder.isEmpty {
                     Text(placeholder)
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(Color.white.opacity(0.28))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 11)
                         .padding(.vertical, 10)
                         .allowsHitTesting(false)
                 }
@@ -30,14 +36,18 @@ struct QuestionTextInputView: View {
                 .scrollContentBackground(.hidden)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(.white)
-                .frame(minHeight: 86)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .frame(minHeight: 74)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(accentGreen.opacity(0.12), lineWidth: 1)
             )
         }
+    }
+
+    private var accentGreen: Color {
+        Color(red: 0.42, green: 0.90, blue: 0.68)
     }
 }
