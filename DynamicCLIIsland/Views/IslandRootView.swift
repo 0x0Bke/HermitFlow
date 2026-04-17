@@ -865,39 +865,21 @@ private extension IslandRootView {
     }
 
     func approvalPrimaryTitle(for request: ApprovalRequest) -> String {
-        if let rationale = request.rationale?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !rationale.isEmpty {
+        if let contextTitle = request.contextTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !contextTitle.isEmpty {
+            return contextTitle
+        }
+
+        let commandSummary = request.commandSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !commandSummary.isEmpty {
+            return commandSummary
+        }
+
+        if let rationale = request.displayRationale {
             return rationale
         }
 
-        if request.commandSummary.isEmpty {
-            return approvalConversationTitle(for: request) ?? "Waiting for command detail"
-        }
-
-        return request.commandSummary
-    }
-
-    func approvalConversationTitle(for request: ApprovalRequest) -> String? {
-        if let sessionID = request.focusTarget?.sessionID {
-            if let matchedSession = store.sessions.first(where: {
-                $0.id == sessionID || $0.focusTarget?.sessionID == sessionID
-            }) {
-                return matchedSession.title
-            }
-        }
-
-        if let displayName = request.focusTarget?.displayName,
-           let matchedSession = store.sessions.first(where: {
-               $0.focusTarget?.displayName == displayName
-           }) {
-            return matchedSession.title
-        }
-
-        if let matchedSession = store.sessions.first(where: { $0.origin == request.source }) {
-            return matchedSession.title
-        }
-
-        return nil
+        return "Waiting for command detail"
     }
 
     func approvalSessionTitle(for request: ApprovalRequest) -> String {

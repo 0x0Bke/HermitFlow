@@ -90,7 +90,19 @@ struct LocalCodexSource: @unchecked Sendable {
                 terminalClient: terminalClient,
                 preferDesktopOrigin: shouldPreferDesktopOrigin
             )
-            let approvalRequest = sessionFileURL.flatMap { fetchPendingApproval(in: $0, focusTarget: focusTarget) }
+            let contextTitle = conversationSummary ?? sessionTitle(
+                sessionMeta: sessionMeta,
+                fallbackSource: threadSnapshot.threadSource,
+                terminalClient: terminalClient,
+                preferDesktopOrigin: shouldPreferDesktopOrigin
+            )
+            let approvalRequest = sessionFileURL.flatMap {
+                fetchPendingApproval(
+                    in: $0,
+                    focusTarget: focusTarget,
+                    contextTitle: contextTitle
+                )
+            }
             let activityState = approvalRequest != nil ? .running : deriveActivityState(from: threadSnapshot, sessionHints: sessionHints)
             let updatedAt = Date(timeIntervalSince1970: max(threadSnapshot.threadUpdatedAt, sessionHints?.latestKnownAt ?? 0))
             let freshness = sessionFreshness(
@@ -225,7 +237,18 @@ struct LocalCodexSource: @unchecked Sendable {
                 continue
             }
 
-            let approvalProbe = fetchApprovalProbe(in: sessionFileURL, focusTarget: focusTarget)
+            let conversationSummary = fetchConversationSummary(from: sessionFileURL)
+            let contextTitle = conversationSummary ?? sessionTitle(
+                sessionMeta: sessionMeta,
+                fallbackSource: threadReference.threadSource,
+                terminalClient: terminalClient,
+                preferDesktopOrigin: shouldPreferDesktopOrigin
+            )
+            let approvalProbe = fetchApprovalProbe(
+                in: sessionFileURL,
+                focusTarget: focusTarget,
+                contextTitle: contextTitle
+            )
             resolvedRequestIDs.formUnion(approvalProbe.resolvedRequestIDs)
 
             guard let approvalRequest = approvalProbe.pendingRequest else {
@@ -837,11 +860,23 @@ struct LocalCodexSource: @unchecked Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func fetchPendingApproval(in fileURL: URL, focusTarget: FocusTarget?) -> ApprovalRequest? {
-        fetchApprovalProbe(in: fileURL, focusTarget: focusTarget).pendingRequest
+    private func fetchPendingApproval(
+        in fileURL: URL,
+        focusTarget: FocusTarget?,
+        contextTitle: String?
+    ) -> ApprovalRequest? {
+        fetchApprovalProbe(
+            in: fileURL,
+            focusTarget: focusTarget,
+            contextTitle: contextTitle
+        ).pendingRequest
     }
 
-    private func fetchApprovalProbe(in fileURL: URL, focusTarget: FocusTarget?) -> CodexApprovalProbeResult {
+    private func fetchApprovalProbe(
+        in fileURL: URL,
+        focusTarget: FocusTarget?,
+        contextTitle: String?
+    ) -> CodexApprovalProbeResult {
         let recentLines = readRecentLines(from: fileURL, maxBytes: recentSessionScanBytes)
         guard !recentLines.isEmpty else {
             return CodexApprovalProbeResult(pendingRequest: nil, resolvedRequestIDs: [])
@@ -908,6 +943,7 @@ struct LocalCodexSource: @unchecked Sendable {
         return CodexApprovalProbeResult(
             pendingRequest: ApprovalRequest(
                 id: latestPending.callID,
+                contextTitle: contextTitle,
                 commandSummary: summarizeCommand(latestPending.command),
                 commandText: normalizedCommandText(latestPending.command),
                 rationale: latestPending.justification,
@@ -2420,6 +2456,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
 
             return ApprovalRequest(
                 id: approval.id,
+                contextTitle: sessions[approval.sessionID]?.title,
                 commandSummary: approval.commandSummary,
                 commandText: approval.commandText,
                 rationale: approval.rationale,
