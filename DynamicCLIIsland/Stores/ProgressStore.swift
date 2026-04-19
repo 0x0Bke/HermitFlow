@@ -69,6 +69,7 @@ final class ProgressStore: ObservableObject {
 
     var tasks: [CLIJob] { appStore.tasks }
     var codexStatus: CodexActivityState { appStore.codexStatus }
+    var activeRunningDetail: IslandRunningDetail? { appStore.activeRunningDetail }
     var selectedLogo: BrandLogo { appStore.selectedLogo }
     var sessions: [AgentSessionSnapshot] { appStore.sessions }
     var displayMode: DisplayMode { appStore.displayMode }

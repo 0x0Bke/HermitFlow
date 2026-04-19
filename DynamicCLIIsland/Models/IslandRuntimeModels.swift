@@ -67,6 +67,20 @@ enum IslandCodexActivityState: String {
     case failure
 }
 
+enum IslandRunningDetail: String, Hashable, Codable {
+    case thinking
+    case working
+
+    var displayTitle: String {
+        switch self {
+        case .thinking:
+            return "Thinking"
+        case .working:
+            return "Working"
+        }
+    }
+}
+
 enum SessionFreshness: String, Hashable {
     case live
     case stale
@@ -196,6 +210,7 @@ struct AgentSessionSnapshot: Identifiable, Hashable {
     let title: String
     let detail: String
     let activityState: IslandCodexActivityState
+    let runningDetail: IslandRunningDetail?
     let updatedAt: Date
     let cwd: String?
     let focusTarget: FocusTarget?

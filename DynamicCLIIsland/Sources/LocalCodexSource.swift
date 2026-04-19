@@ -168,6 +168,7 @@ struct LocalCodexSource: @unchecked Sendable {
                     ),
                     detail: detail,
                     activityState: activityState,
+                    runningDetail: codexRunningDetail(for: activityState),
                     updatedAt: updatedAt,
                     cwd: resolvedCWD.isEmpty ? nil : resolvedCWD,
                     focusTarget: focusTarget,
@@ -311,6 +312,10 @@ struct LocalCodexSource: @unchecked Sendable {
         }
 
         return .idle
+    }
+
+    private func codexRunningDetail(for activityState: IslandCodexActivityState) -> IslandRunningDetail? {
+        activityState == .running ? .working : nil
     }
 
     private func fetchUsageSnapshots(threadReferences: [RecentThreadReference]) -> [ProviderUsageSnapshot] {
@@ -1117,6 +1122,7 @@ struct LocalCodexSource: @unchecked Sendable {
                 title: title,
                 detail: detail,
                 activityState: activityState,
+                runningDetail: codexRunningDetail(for: activityState),
                 updatedAt: updatedAt,
                 cwd: nil,
                 focusTarget: FocusTarget(
@@ -2535,6 +2541,9 @@ private final class ClaudeHookBridge: @unchecked Sendable {
                 title: summarizedSession.title,
                 detail: summarizedSession.detail,
                 activityState: resolvedStatus.activityState,
+                runningDetail: resolvedStatus.activityState == .running
+                    ? ClaudeTrackedSession.runningDetail(for: summarizedSession.lastEvent)
+                    : nil,
                 updatedAt: summarizedSession.lastActivityAt,
                 cwd: summarizedSession.cwd.isEmpty ? nil : summarizedSession.cwd,
                 focusTarget: focusTarget,
@@ -4876,6 +4885,23 @@ private struct ClaudeTrackedSession {
         }
 
         return lastEvent
+    }
+
+    var runningDetail: IslandRunningDetail? {
+        guard status.activityState == .running else {
+            return nil
+        }
+
+        return Self.runningDetail(for: lastEvent)
+    }
+
+    static func runningDetail(for event: String) -> IslandRunningDetail {
+        switch event {
+        case "UserPromptSubmit", "assistant_thinking", "user_prompt":
+            return .thinking
+        default:
+            return .working
+        }
     }
 
     static func status(for event: String, state: String) -> Status {

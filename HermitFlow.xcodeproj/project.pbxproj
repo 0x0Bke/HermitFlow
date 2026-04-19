@@ -108,6 +108,11 @@
 		A1000000000000000000013C /* QuestionTextInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000147 /* QuestionTextInputView.swift */; };
 		A1000000000000000000013D /* QuestionPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000148 /* QuestionPanelView.swift */; };
 		A1000000000000000000014A /* QuestionInlineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000149 /* QuestionInlineView.swift */; };
+		A1000000000000000000014C /* DotMatrixWaveStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000014B /* DotMatrixWaveStatusGlyph.swift */; };
+		A1000000000000000000014E /* DotMatrixSpinnerStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000014D /* DotMatrixSpinnerStatusGlyph.swift */; };
+		A10000000000000000000152 /* DotMatrixSineWaveStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */; };
+		A10000000000000000000154 /* DotMatrixSuccessStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */; };
+		A10000000000000000000156 /* DotMatrixFailureStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -116,6 +121,11 @@
 		A10000000000000000000003 /* CLIJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIJob.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* ProgressStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressStore.swift; sourceTree = "<group>"; };
 		A10000000000000000000005 /* IslandRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandRootView.swift; sourceTree = "<group>"; };
+		A1000000000000000000014B /* DotMatrixWaveStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixWaveStatusGlyph.swift; sourceTree = "<group>"; };
+		A1000000000000000000014D /* DotMatrixSpinnerStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixSpinnerStatusGlyph.swift; sourceTree = "<group>"; };
+		A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixSineWaveStatusGlyph.swift; sourceTree = "<group>"; };
+		A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixSuccessStatusGlyph.swift; sourceTree = "<group>"; };
+		A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixFailureStatusGlyph.swift; sourceTree = "<group>"; };
 		A10000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000007 /* HermitFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermitFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000008 /* claudecode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = claudecode.png; sourceTree = "<group>"; };
@@ -295,7 +305,12 @@
 					A100000000000000000000EE /* Approval */,
 					A1000000000000000000012A /* Diagnostics */,
 					A10000000000000000000150 /* Question */,
+					A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */,
+					A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */,
+					A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */,
 					A1000000000000000000010A /* Usage */,
+					A1000000000000000000014D /* DotMatrixSpinnerStatusGlyph.swift */,
+					A1000000000000000000014B /* DotMatrixWaveStatusGlyph.swift */,
 					A10000000000000000000005 /* IslandRootView.swift */,
 				);
 				path = Views;
@@ -700,6 +715,11 @@
 				A10000000000000000000013 /* CLIJob.swift in Sources */,
 				A10000000000000000000014 /* ProgressStore.swift in Sources */,
 				A10000000000000000000015 /* IslandRootView.swift in Sources */,
+				A10000000000000000000152 /* DotMatrixSineWaveStatusGlyph.swift in Sources */,
+				A10000000000000000000154 /* DotMatrixSuccessStatusGlyph.swift in Sources */,
+				A10000000000000000000156 /* DotMatrixFailureStatusGlyph.swift in Sources */,
+				A1000000000000000000014E /* DotMatrixSpinnerStatusGlyph.swift in Sources */,
+				A1000000000000000000014C /* DotMatrixWaveStatusGlyph.swift in Sources */,
 				A1000000000000000000001A /* IslandRuntimeModels.swift in Sources */,
 				A1000000000000000000001B /* SessionStore.swift in Sources */,
 				A1000000000000000000001C /* ApprovalStore.swift in Sources */,

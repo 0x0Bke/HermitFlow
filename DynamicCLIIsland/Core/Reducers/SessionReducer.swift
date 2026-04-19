@@ -52,12 +52,15 @@ struct SessionReducer {
     }
 
     func sessionEvent(from task: CLIJob) -> SessionEvent {
-        SessionEvent(
+        let activityState = activityState(for: task.stage)
+
+        return SessionEvent(
             id: task.id,
             origin: origin(for: task.provider),
             title: task.title,
             detail: task.detail,
-            activityState: activityState(for: task.stage),
+            activityState: activityState,
+            runningDetail: activityState == .running ? .working : nil,
             updatedAt: task.updatedAt,
             cwd: nil,
             focusTarget: nil,
