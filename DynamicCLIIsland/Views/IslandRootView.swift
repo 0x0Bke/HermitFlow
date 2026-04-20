@@ -234,10 +234,11 @@ struct IslandRootView: View {
 
     @ViewBuilder
     private var compactStatusIcon: some View {
-        statusGlyph(for: store.codexStatus)
+        statusGlyph(for: store.codexStatus, runningDetail: store.activeRunningDetail)
             .id(statusGlyphIdentity)
             .transition(.identity)
             .animation(nil, value: store.codexStatus)
+            .animation(nil, value: store.activeRunningDetail)
             .animation(nil, value: store.runningGlyphAnimationSuppressed)
     }
 
@@ -251,8 +252,7 @@ struct IslandRootView: View {
 
     @ViewBuilder
     private func brandLogoImage(size: CGFloat) -> some View {
-        if let imageURL = Bundle.main.url(forResource: store.selectedLogo.resourceName, withExtension: "png"),
-           let image = NSImage(contentsOf: imageURL) {
+        if let image = resolvedBrandLogoImage() {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
@@ -261,6 +261,23 @@ struct IslandRootView: View {
             EmptyView()
                 .frame(width: size, height: size)
         }
+    }
+
+    private func resolvedBrandLogoImage() -> NSImage? {
+        if store.selectedLogo == .custom,
+           let customLogoPath = store.customLogoPath,
+           let image = NSImage(contentsOfFile: customLogoPath) {
+            return image
+        }
+
+        let resourceName = store.selectedLogo == .custom
+            ? IslandBrandLogo.clawd.resourceName
+            : store.selectedLogo.resourceName
+        guard let imageURL = Bundle.main.url(forResource: resourceName, withExtension: "png") else {
+            return nil
+        }
+
+        return NSImage(contentsOf: imageURL)
     }
 
     private func handleDisplayModeChange(
@@ -290,25 +307,46 @@ struct IslandRootView: View {
     }
 
     @ViewBuilder
-    private func statusGlyph(for state: IslandCodexActivityState) -> some View {
-        switch state {
-        case .idle:
-            IdleStatusGlyph()
-        case .running:
-            if store.runningGlyphAnimationSuppressed {
-                StaticRunningStatusGlyph()
-            } else {
-                RunningStatusGlyph()
+    private func statusGlyph(
+        for state: IslandCodexActivityState,
+        runningDetail: IslandRunningDetail?
+    ) -> some View {
+        if shouldUseSpinnerStatusGlyph {
+            DotMatrixSpinnerStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+        } else {
+            switch state {
+            case .idle:
+                IdleStatusGlyph()
+            case .running:
+                if runningDetail == .thinking {
+                    DotMatrixSineWaveStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+                } else if store.runningGlyphAnimationSuppressed {
+                    StaticRunningStatusGlyph()
+                } else {
+                    RunningStatusGlyph()
+                }
+            case .success:
+                DotMatrixSuccessStatusGlyph(isAnimating: true)
+            case .failure:
+                DotMatrixFailureStatusGlyph(isAnimating: true)
             }
-        case .success:
-            SolidStatusGlyph(fill: Color(red: 96 / 255, green: 214 / 255, blue: 55 / 255), symbol: "checkmark")
-        case .failure:
-            SolidStatusGlyph(fill: Color(red: 220 / 255, green: 68 / 255, blue: 70 / 255), symbol: "xmark")
         }
     }
 
     private var statusGlyphIdentity: String {
-        "\(store.codexStatus.rawValue)-\(store.runningGlyphAnimationSuppressed)"
+        if let approvalRequest = store.approvalRequest {
+            return "spinner-approval-\(approvalRequest.id)-\(store.runningGlyphAnimationSuppressed)"
+        }
+
+        if let prompt = store.activeQuestionPrompt {
+            return "spinner-question-\(prompt.id)-\(store.runningGlyphAnimationSuppressed)"
+        }
+
+        return "\(store.codexStatus.rawValue)-\(store.activeRunningDetail?.rawValue ?? "none")-\(store.runningGlyphAnimationSuppressed)"
+    }
+
+    private var shouldUseSpinnerStatusGlyph: Bool {
+        store.approvalRequest != nil || store.activeQuestionPrompt != nil
     }
 }
 
@@ -556,6 +594,18 @@ private extension IslandRootView {
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
+
+                if session.activityState == .running, let runningDetail = session.runningDetail {
+                    Text(runningDetail.displayTitle)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.56))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                        )
+                }
 
                 Text(relativeTimestamp(for: session.updatedAt))
                     .font(.system(size: 10, weight: .regular))
@@ -1040,92 +1090,14 @@ private struct IdleStatusGlyph: View {
 }
 
 private struct RunningStatusGlyph: View {
-    private let accentColor = Color(red: 42 / 255, green: 134 / 255, blue: 244 / 255)
-    private let highlightColor = Color(red: 88 / 255, green: 196 / 255, blue: 1.0)
-    private let coreColor = Color(red: 214 / 255, green: 238 / 255, blue: 1.0)
-
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
-            let phase = pulsePhase(at: timeline.date)
-            let secondaryPhase = pulsePhase(at: timeline.date.addingTimeInterval(-0.42))
-            let coreGlow = 1.0 - phase
-            let trailingGlow = 1.0 - secondaryPhase
-
-            ZStack {
-                pulseRing(progress: secondaryPhase, lineWidth: 1.15, baseOpacity: 0.30)
-                pulseRing(progress: phase, lineWidth: 1.9, baseOpacity: 0.48)
-
-                Circle()
-                    .fill(highlightColor.opacity(0.10 + coreGlow * 0.08 + trailingGlow * 0.04))
-                    .frame(width: 10.8, height: 10.8)
-                    .blur(radius: 0.55)
-
-                Circle()
-                    .fill(accentColor)
-                    .frame(width: 6.5, height: 6.5)
-                    .shadow(color: accentColor.opacity(0.44 + coreGlow * 0.18), radius: 5.4 + coreGlow * 0.8)
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                coreColor.opacity(0.92),
-                                highlightColor.opacity(0.70),
-                                accentColor.opacity(0.14)
-                            ],
-                            center: .center,
-                            startRadius: 0.1,
-                            endRadius: 3.6
-                        )
-                    )
-                    .frame(width: 4.3 + coreGlow * 0.45, height: 4.3 + coreGlow * 0.45)
-
-                Circle()
-                    .fill(.white.opacity(0.22 + coreGlow * 0.10))
-                    .frame(width: 2.2, height: 2.2)
-                    .blur(radius: 0.12)
-                    .offset(x: -0.8, y: -0.8)
-            }
-            .frame(width: 15, height: 15)
-        }
-    }
-
-    private func pulseRing(progress: Double, lineWidth: CGFloat, baseOpacity: Double) -> some View {
-        return Circle()
-            .stroke(highlightColor.opacity(baseOpacity * (1 - progress)), lineWidth: lineWidth)
-            .frame(width: 6.5, height: 6.5)
-            .scaleEffect(0.9 + progress * 1.55)
-            .blur(radius: 0.08 + progress * 0.4)
-    }
-
-    private func pulsePhase(at date: Date) -> Double {
-        let cycleDuration = 1.28
-        let elapsed = date.timeIntervalSinceReferenceDate
-        let normalized = elapsed.truncatingRemainder(dividingBy: cycleDuration) / cycleDuration
-        return normalized
+        DotMatrixWaveStatusGlyph(isAnimating: true)
     }
 }
 
 private struct StaticRunningStatusGlyph: View {
-    private let accentColor = Color(red: 42 / 255, green: 134 / 255, blue: 244 / 255)
-    private let highlightColor = Color(red: 88 / 255, green: 196 / 255, blue: 1.0)
-
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(highlightColor.opacity(0.18), lineWidth: 1.4)
-                .frame(width: 10.5, height: 10.5)
-
-            Circle()
-                .fill(highlightColor.opacity(0.14))
-                .frame(width: 8.5, height: 8.5)
-
-            Circle()
-                .fill(accentColor)
-                .frame(width: 6.5, height: 6.5)
-                .shadow(color: accentColor.opacity(0.30), radius: 2.8)
-        }
-        .frame(width: 15, height: 15)
+        DotMatrixWaveStatusGlyph(isAnimating: false)
     }
 }
 

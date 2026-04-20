@@ -187,6 +187,9 @@ private struct SettingsPanelView: View {
     let onAskUserQuestionHandlingModeSelected: (AskUserQuestionHandlingMode) -> Void
     let usageDisplayType: () -> UsageDisplayType
     let onUsageDisplayTypeSelected: (UsageDisplayType) -> Void
+    let currentCustomLogoPath: () -> String?
+    let onChooseCustomLogo: () -> Void
+    let onClearCustomLogo: () -> Void
     let currentNotificationSoundTitle: (NotificationSoundKind) -> String
     let currentNotificationSoundPath: (NotificationSoundKind) -> String?
     let onChooseNotificationSound: (NotificationSoundKind) -> Void
@@ -327,6 +330,26 @@ private struct SettingsPanelView: View {
                             ForEach(availableLogos, id: \.rawValue) { logo in
                                 Button(logo.menuTitle) {
                                     store.selectLogo(logo)
+                                }
+                            }
+
+                            Divider()
+
+                            Button("选择本地图片…") {
+                                onChooseCustomLogo()
+                            }
+
+                            if currentCustomLogoPath() != nil {
+                                Button(IslandBrandLogo.custom.menuTitle) {
+                                    store.selectLogo(.custom)
+                                }
+
+                                Button("恢复内置 Logo") {
+                                    store.selectLogo(.clawd)
+                                }
+
+                                Button("移除自定义 Logo") {
+                                    onClearCustomLogo()
                                 }
                             }
                         } label: {
@@ -746,6 +769,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var codexColorLogoMenuItem: NSMenuItem?
     private var codexMonoLogoMenuItem: NSMenuItem?
     private var openAILogoMenuItem: NSMenuItem?
+    private var customLogoMenuItem: NSMenuItem?
     private var resyncClaudeHooksMenuItem: NSMenuItem?
     private var checkForUpdatesMenuItem: NSMenuItem?
     private var approvalPreviewMenuItem: NSMenuItem?
@@ -941,6 +965,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             onUsageDisplayTypeSelected: { [weak self] option in
                 self?.store.setUsageDisplayType(option)
             },
+            currentCustomLogoPath: { [weak self] in
+                self?.store.customLogoPath
+            },
+            onChooseCustomLogo: { [weak self] in
+                self?.chooseCustomLeftLogo()
+            },
+            onClearCustomLogo: { [weak self] in
+                self?.clearCustomLeftLogo()
+            },
             currentNotificationSoundTitle: { [weak self] kind in
                 self?.currentNotificationSoundTitle(for: kind) ?? "默认提示音"
             },
@@ -992,6 +1025,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         case .completion:
             return store.customCompletionNotificationSoundPath
         }
+    }
+
+    private func chooseCustomLeftLogo() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.allowedContentTypes = [.image]
+        panel.title = "选择左侧 Logo"
+        panel.message = "选择一个本地图片作为左侧 Logo。"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            importCustomLeftLogo(from: url)
+        }
+    }
+
+    private func importCustomLeftLogo(from sourceURL: URL) {
+        guard let image = NSImage(contentsOf: sourceURL) else {
+            debugLog("Failed to import custom left logo: unable to decode image at \(sourceURL.path)")
+            return
+        }
+
+        guard let pngData = pngData(for: image) else {
+            debugLog("Failed to import custom left logo: unable to convert image to PNG at \(sourceURL.path)")
+            return
+        }
+
+        do {
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(
+                at: FilePaths.customLogosDirectory,
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+
+            try pngData.write(to: FilePaths.customLeftLogo, options: .atomic)
+            store.setCustomLogoPath(FilePaths.customLeftLogo.path)
+            store.selectLogo(.custom)
+            updateMenuState()
+        } catch {
+            debugLog("Failed to import custom left logo: \(error.localizedDescription)")
+            #if DEBUG
+            print("Failed to import custom left logo: \(error)")
+            #endif
+        }
+    }
+
+    private func pngData(for image: NSImage) -> Data? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private func clearCustomLeftLogo() {
+        store.clearCustomLogo()
+        updateMenuState()
     }
 
     private func chooseCustomNotificationSound(for kind: NotificationSoundKind) {
@@ -1165,6 +1258,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         zenMuxLogoMenuItem.target = self
         logoSubmenu.addItem(zenMuxLogoMenuItem)
 
+        let customLogoMenuItem = NSMenuItem(
+            title: ProgressStore.BrandLogo.custom.menuTitle,
+            action: #selector(selectCustomLogo),
+            keyEquivalent: ""
+        )
+        customLogoMenuItem.target = self
+        logoSubmenu.addItem(customLogoMenuItem)
+
         menu.setSubmenu(logoSubmenu, for: logoMenuItem)
         menu.addItem(logoMenuItem)
 
@@ -1228,6 +1329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         self.codexColorLogoMenuItem = codexColorLogoMenuItem
         self.codexMonoLogoMenuItem = codexMonoLogoMenuItem
         self.openAILogoMenuItem = openAILogoMenuItem
+        self.customLogoMenuItem = customLogoMenuItem
         self.resyncClaudeHooksMenuItem = resyncClaudeHooksMenuItem
         self.checkForUpdatesMenuItem = checkForUpdatesMenuItem
 //        审批状态测试入口
@@ -1577,6 +1679,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         codexColorLogoMenuItem?.state = store.selectedLogo == .codexColor ? .on : .off
         codexMonoLogoMenuItem?.state = store.selectedLogo == .codexMono ? .on : .off
         openAILogoMenuItem?.state = store.selectedLogo == .openAI ? .on : .off
+        customLogoMenuItem?.state = store.selectedLogo == .custom ? .on : .off
+        customLogoMenuItem?.isEnabled = store.customLogoPath != nil
         approvalPreviewMenuItem?.state = store.approvalPreviewEnabled ? .on : .off
     }
 
@@ -2028,6 +2132,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     @objc
     private func selectOpenAILogo() {
         store.selectLogo(.openAI)
+        updateMenuState()
+    }
+
+    @objc
+    private func selectCustomLogo() {
+        guard store.customLogoPath != nil else {
+            return
+        }
+
+        store.selectLogo(.custom)
         updateMenuState()
     }
 

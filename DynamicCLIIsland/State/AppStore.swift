@@ -50,7 +50,12 @@ final class AppStore: ObservableObject {
     var sessions: [AgentSessionSnapshot] { runtimeStore.sessions }
     var approvalRequest: ApprovalRequest? { runtimeStore.approvalRequest }
     var codexStatus: IslandCodexActivityState { runtimeStore.codexStatus }
+    var activeRunningDetail: IslandRunningDetail? {
+        runtimeStore.sessions.first(where: { $0.activityState == .running && $0.runningDetail == .thinking })?.runningDetail
+            ?? runtimeStore.sessions.first(where: { $0.activityState == .running })?.runningDetail
+    }
     var selectedLogo: IslandBrandLogo { presentationStore.selectedLogo }
+    var customLogoPath: String? { presentationStore.customLogoPath }
     var focusTarget: FocusTarget? { runtimeStore.focusTarget }
     var statusMessage: String { runtimeStore.statusMessage }
     var errorMessage: String? { runtimeStore.errorMessage }
@@ -106,7 +111,7 @@ final class AppStore: ObservableObject {
         case .idle:
             return "Ready"
         case .running:
-            return "Working"
+            return activeRunningDetail?.displayTitle ?? "Working"
         case .success:
             return "Completed"
         case .failure:
@@ -207,6 +212,14 @@ final class AppStore: ObservableObject {
 
     func selectLogo(_ logo: IslandBrandLogo) {
         presentationStore.selectLogo(logo)
+    }
+
+    func setCustomLogoPath(_ path: String?) {
+        presentationStore.setCustomLogoPath(path)
+    }
+
+    func clearCustomLogo() {
+        presentationStore.clearCustomLogo()
     }
 
     func toggleSoundMuted() {

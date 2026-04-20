@@ -69,7 +69,9 @@ final class ProgressStore: ObservableObject {
 
     var tasks: [CLIJob] { appStore.tasks }
     var codexStatus: CodexActivityState { appStore.codexStatus }
+    var activeRunningDetail: IslandRunningDetail? { appStore.activeRunningDetail }
     var selectedLogo: BrandLogo { appStore.selectedLogo }
+    var customLogoPath: String? { appStore.customLogoPath }
     var sessions: [AgentSessionSnapshot] { appStore.sessions }
     var displayMode: DisplayMode { appStore.displayMode }
     var sourceMode: SourceMode { appStore.sourceMode }
@@ -200,6 +202,14 @@ final class ProgressStore: ObservableObject {
 
     func selectLogo(_ logo: BrandLogo) {
         appStore.selectLogo(logo)
+    }
+
+    func setCustomLogoPath(_ path: String?) {
+        appStore.setCustomLogoPath(path)
+    }
+
+    func clearCustomLogo() {
+        appStore.clearCustomLogo()
     }
 
     func toggleSoundMuted() {

@@ -160,7 +160,7 @@ HermitFlow 也支持从自己管理的本地缓存文件读取 Claude 额度：
 - 面板中的 `Diagnostic` 卡片会展示 Claude hook 同步失败原因
 - 可在面板或状态栏菜单中点击 `Resync Claude Hooks` 重新同步 Claude hooks
 - 可通过会话卡片或审批卡片上的回焦入口，直接拉起对应的 `Claude Code` / `Codex` 客户端
-- 对于 `Claude Code` 终端会话，在存在本地 session hint 时，HermitFlow 还会尝试精确跳转到对应的 `iTerm` 标签/会话或 `Warp` 窗口
+- 对于终端会话，HermitFlow 会尝试回焦到对应的 `iTerm`、`Warp`、`Terminal`、`WezTerm`、`Ghostty` 或 `Alacritty` 窗口；其中 `iTerm` / `WezTerm` 会优先使用本地 session hint，其他终端会按工作目录窗口标题做 best-effort 匹配
 - 通过系统状态栏图标可显示/隐藏窗口，并切换左侧 Logo
 
 ### 问答处理
@@ -289,6 +289,8 @@ provider 查询配置文件位于：
 环境变量 `HERMITFLOW_CLAUDE_SETTINGS_PATHS` 支持使用换行或分号分隔多条路径。
 
 默认路径 `~/.claude/settings.json` 始终会保留在同步列表中。
+
+这些 settings 路径也会用于推导本地 Claude 会话数据目录。比如配置 `~/custom-claude/settings.json` 后，HermitFlow 会额外读取 `~/custom-claude/sessions`、`~/custom-claude/projects` 和 `~/custom-claude/history.jsonl`。如果额外路径配置无法解析，会话读取会回退到默认 `~/.claude`。
 
 另外，以下特殊情况也会被安全处理：
 

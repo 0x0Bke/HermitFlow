@@ -21,6 +21,10 @@ enum FilePaths {
         .appendingPathComponent("claude-settings-paths.json", isDirectory: false)
     static let claudeProviderUsageConfig = hermitFlowHome
         .appendingPathComponent("claude-provider-usage.json", isDirectory: false)
+    static let customLogosDirectory = hermitFlowHome
+        .appendingPathComponent("logos", isDirectory: true)
+    static let customLeftLogo = customLogosDirectory
+        .appendingPathComponent("custom-left-logo.png", isDirectory: false)
     static let notificationSoundsDirectory = hermitFlowHome
         .appendingPathComponent("notification-sounds", isDirectory: true)
     static let customApprovalNotificationSound = notificationSoundsDirectory

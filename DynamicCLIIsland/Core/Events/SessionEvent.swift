@@ -13,6 +13,7 @@ struct SessionEvent: Hashable, Identifiable {
     let title: String
     let detail: String
     let activityState: IslandCodexActivityState
+    let runningDetail: IslandRunningDetail?
     let updatedAt: Date
     let cwd: String?
     let focusTarget: FocusTarget?
@@ -24,6 +25,7 @@ struct SessionEvent: Hashable, Identifiable {
         title = snapshot.title
         detail = snapshot.detail
         activityState = snapshot.activityState
+        runningDetail = snapshot.runningDetail
         updatedAt = snapshot.updatedAt
         cwd = snapshot.cwd
         focusTarget = snapshot.focusTarget
@@ -36,6 +38,7 @@ struct SessionEvent: Hashable, Identifiable {
         title: String,
         detail: String,
         activityState: IslandCodexActivityState,
+        runningDetail: IslandRunningDetail?,
         updatedAt: Date,
         cwd: String?,
         focusTarget: FocusTarget?,
@@ -46,6 +49,7 @@ struct SessionEvent: Hashable, Identifiable {
         self.title = title
         self.detail = detail
         self.activityState = activityState
+        self.runningDetail = runningDetail
         self.updatedAt = updatedAt
         self.cwd = cwd
         self.focusTarget = focusTarget
@@ -59,6 +63,7 @@ struct SessionEvent: Hashable, Identifiable {
             title: title,
             detail: detail,
             activityState: activityState,
+            runningDetail: runningDetail,
             updatedAt: updatedAt,
             cwd: cwd,
             focusTarget: focusTarget,

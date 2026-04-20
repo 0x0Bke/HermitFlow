@@ -8,6 +8,7 @@ enum IslandBrandLogo: String {
     case codexColor
     case codexMono
     case openAI
+    case custom
 
     var resourceName: String {
         switch self {
@@ -25,6 +26,8 @@ enum IslandBrandLogo: String {
             return "codex"
         case .openAI:
             return "openai"
+        case .custom:
+            return IslandBrandLogo.clawd.resourceName
         }
     }
 
@@ -44,6 +47,8 @@ enum IslandBrandLogo: String {
             return "Codex Mono"
         case .openAI:
             return "OpenAI"
+        case .custom:
+            return "Custom"
         }
     }
 }
@@ -65,6 +70,20 @@ enum IslandCodexActivityState: String {
     case running
     case success
     case failure
+}
+
+enum IslandRunningDetail: String, Hashable, Codable {
+    case thinking
+    case working
+
+    var displayTitle: String {
+        switch self {
+        case .thinking:
+            return "Thinking"
+        case .working:
+            return "Working"
+        }
+    }
 }
 
 enum SessionFreshness: String, Hashable {
@@ -196,6 +215,7 @@ struct AgentSessionSnapshot: Identifiable, Hashable {
     let title: String
     let detail: String
     let activityState: IslandCodexActivityState
+    let runningDetail: IslandRunningDetail?
     let updatedAt: Date
     let cwd: String?
     let focusTarget: FocusTarget?

@@ -120,12 +120,15 @@ final class SessionStore {
     }
 
     private func makeSession(from task: CLIJob) -> AgentSessionSnapshot {
-        AgentSessionSnapshot(
+        let activityState = activityState(for: task.stage)
+
+        return AgentSessionSnapshot(
             id: task.id,
             origin: origin(for: task.provider),
             title: task.title,
             detail: task.detail,
-            activityState: activityState(for: task.stage),
+            activityState: activityState,
+            runningDetail: activityState == .running ? .working : nil,
             updatedAt: task.updatedAt,
             cwd: nil,
             focusTarget: nil,
