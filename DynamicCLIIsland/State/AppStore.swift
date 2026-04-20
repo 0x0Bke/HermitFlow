@@ -55,6 +55,7 @@ final class AppStore: ObservableObject {
             ?? runtimeStore.sessions.first(where: { $0.activityState == .running })?.runningDetail
     }
     var selectedLogo: IslandBrandLogo { presentationStore.selectedLogo }
+    var customLogoPath: String? { presentationStore.customLogoPath }
     var focusTarget: FocusTarget? { runtimeStore.focusTarget }
     var statusMessage: String { runtimeStore.statusMessage }
     var errorMessage: String? { runtimeStore.errorMessage }
@@ -211,6 +212,14 @@ final class AppStore: ObservableObject {
 
     func selectLogo(_ logo: IslandBrandLogo) {
         presentationStore.selectLogo(logo)
+    }
+
+    func setCustomLogoPath(_ path: String?) {
+        presentationStore.setCustomLogoPath(path)
+    }
+
+    func clearCustomLogo() {
+        presentationStore.clearCustomLogo()
     }
 
     func toggleSoundMuted() {

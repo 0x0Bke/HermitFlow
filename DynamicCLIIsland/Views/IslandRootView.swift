@@ -252,8 +252,7 @@ struct IslandRootView: View {
 
     @ViewBuilder
     private func brandLogoImage(size: CGFloat) -> some View {
-        if let imageURL = Bundle.main.url(forResource: store.selectedLogo.resourceName, withExtension: "png"),
-           let image = NSImage(contentsOf: imageURL) {
+        if let image = resolvedBrandLogoImage() {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
@@ -262,6 +261,23 @@ struct IslandRootView: View {
             EmptyView()
                 .frame(width: size, height: size)
         }
+    }
+
+    private func resolvedBrandLogoImage() -> NSImage? {
+        if store.selectedLogo == .custom,
+           let customLogoPath = store.customLogoPath,
+           let image = NSImage(contentsOfFile: customLogoPath) {
+            return image
+        }
+
+        let resourceName = store.selectedLogo == .custom
+            ? IslandBrandLogo.clawd.resourceName
+            : store.selectedLogo.resourceName
+        guard let imageURL = Bundle.main.url(forResource: resourceName, withExtension: "png") else {
+            return nil
+        }
+
+        return NSImage(contentsOf: imageURL)
     }
 
     private func handleDisplayModeChange(

@@ -8,6 +8,7 @@ enum IslandBrandLogo: String {
     case codexColor
     case codexMono
     case openAI
+    case custom
 
     var resourceName: String {
         switch self {
@@ -25,6 +26,8 @@ enum IslandBrandLogo: String {
             return "codex"
         case .openAI:
             return "openai"
+        case .custom:
+            return IslandBrandLogo.clawd.resourceName
         }
     }
 
@@ -44,6 +47,8 @@ enum IslandBrandLogo: String {
             return "Codex Mono"
         case .openAI:
             return "OpenAI"
+        case .custom:
+            return "Custom"
         }
     }
 }

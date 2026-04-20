@@ -124,6 +124,7 @@ final class PresentationStore: ObservableObject {
     @Published private(set) var inlineApprovalCommandExpanded = false
     @Published private(set) var runningGlyphAnimationSuppressed = false
     @Published private(set) var isSoundMuted: Bool
+    @Published private(set) var customLogoPath: String?
     @Published private(set) var customApprovalNotificationSoundPath: String?
     @Published private(set) var customCompletionNotificationSoundPath: String?
     @Published private(set) var approvalDefaultFocus: ApprovalDefaultFocusOption
@@ -144,6 +145,7 @@ final class PresentationStore: ObservableObject {
     private let externalDisplayPanelMaxWidthWithoutApproval: CGFloat = 560
     private let externalDisplayPanelMaxWidthWithApproval: CGFloat = 640
     private let logoDefaultsKey = "HermitFlow.selectedLogo"
+    private let customLogoPathDefaultsKey = "HermitFlow.customLeftLogoPath"
     private let soundMutedDefaultsKey = "HermitFlow.soundMuted"
     private let approvalDefaultFocusDefaultsKey = "HermitFlow.approvalDefaultFocus"
     private let usageDisplayTypeDefaultsKey = "HermitFlow.usageDisplayType"
@@ -168,6 +170,9 @@ final class PresentationStore: ObservableObject {
     init() {
         let storedLogo = UserDefaults.standard.string(forKey: logoDefaultsKey)
         selectedLogo = BrandLogo(rawValue: storedLogo ?? "") ?? .clawd
+        customLogoPath = Self.normalizedCustomLogoPath(
+            UserDefaults.standard.string(forKey: customLogoPathDefaultsKey)
+        )
         isSoundMuted = UserDefaults.standard.bool(forKey: soundMutedDefaultsKey)
         Self.migrateLegacyNotificationSoundSettingsIfNeeded()
         customApprovalNotificationSoundPath = Self.normalizedCustomSoundPath(
@@ -496,6 +501,28 @@ final class PresentationStore: ObservableObject {
         UserDefaults.standard.set(logo.rawValue, forKey: logoDefaultsKey)
     }
 
+    func setCustomLogoPath(_ path: String?) {
+        let normalizedPath = Self.normalizedCustomLogoPath(path)
+        guard customLogoPath != normalizedPath else {
+            return
+        }
+
+        customLogoPath = normalizedPath
+        if let normalizedPath {
+            UserDefaults.standard.set(normalizedPath, forKey: customLogoPathDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: customLogoPathDefaultsKey)
+        }
+    }
+
+    func clearCustomLogo() {
+        setCustomLogoPath(nil)
+        try? FileManager.default.removeItem(at: FilePaths.customLeftLogo)
+        if selectedLogo == .custom {
+            selectLogo(.clawd)
+        }
+    }
+
     func toggleSoundMuted() {
         isSoundMuted.toggle()
         UserDefaults.standard.set(isSoundMuted, forKey: soundMutedDefaultsKey)
@@ -524,6 +551,14 @@ final class PresentationStore: ObservableObject {
             defaults.removeObject(forKey: kind.customSoundBookmarkDefaultsKey)
             try? FileManager.default.removeItem(at: kind.customFileURL)
         }
+    }
+
+    private static func normalizedCustomLogoPath(_ path: String?) -> String? {
+        guard let path = path?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else {
+            return nil
+        }
+
+        return path
     }
 
     private static func migrateLegacyNotificationSoundSettingsIfNeeded() {
