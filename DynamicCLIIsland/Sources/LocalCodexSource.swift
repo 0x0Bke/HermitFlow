@@ -305,6 +305,13 @@ struct LocalCodexSource: @unchecked Sendable {
             return .success
         }
 
+        if latestCompletionAt > 0,
+           now - latestCompletionAt < successSettleDelay,
+           latestCompletionAt >= latestFailureAt,
+           latestCompletionAt >= latestExplicitRunningAt {
+            return .running
+        }
+
         if latestExplicitRunningAt > 0,
            now - latestExplicitRunningAt <= runningSignalMaxAge,
            latestExplicitRunningAt >= latestTerminalAt {
@@ -1186,7 +1193,7 @@ struct LocalCodexSource: @unchecked Sendable {
                 return isClientRunning(focusTarget.clientOrigin)
                     || hasActiveWorkspaceMatch
                     || idleAge <= unconfirmedDesktopSessionLookback
-            case .claudeCLI, .codexCLI, .unknown:
+            case .claudeCLI, .codexCLI, .openCodeCLI, .unknown:
                 break
             }
         }
@@ -1204,7 +1211,7 @@ struct LocalCodexSource: @unchecked Sendable {
         }
 
         switch focusTarget.clientOrigin {
-        case .claudeCLI, .codexCLI:
+        case .claudeCLI, .codexCLI, .openCodeCLI:
             return isClientRunning(.codexCLI)
         case .claudeVSCode, .codexDesktop, .codexVSCode:
             return isClientRunning(focusTarget.clientOrigin) || hasActiveWorkspaceMatch
@@ -1404,7 +1411,7 @@ struct LocalCodexSource: @unchecked Sendable {
             bundleIdentifiers = ["com.openai.codex"]
         case .codexVSCode:
             bundleIdentifiers = ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92"]
-        case .codexCLI:
+        case .codexCLI, .openCodeCLI:
             bundleIdentifiers = ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.github.wez.wezterm", "com.mitchellh.ghostty", "org.alacritty"]
         case .unknown:
             bundleIdentifiers = []
@@ -1693,7 +1700,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let claudeStatusLineDebugURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
     private let questionStateRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions")
     private let latestQuestionStateURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions/latest-question.json")
-    private let claudeDebugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-debug.log")
+    private let claudeDebugLogURL = FilePaths.claudeDebugLog
     private let recentHistoryScanBytes = 512 * 1024
     private let recentClaudeProjectFileLimit = 20
     private let interruptionOverrideWindow: TimeInterval = 10

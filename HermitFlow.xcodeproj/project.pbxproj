@@ -36,6 +36,7 @@
 		A10000000000000000000082 /* AppBootstrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000083 /* AppBootstrapper.swift */; };
 		A10000000000000000000084 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000085 /* Logger.swift */; };
 		A10000000000000000000086 /* FilePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000087 /* FilePaths.swift */; };
+		A40000000000000000000001 /* LogRetentionCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* LogRetentionCleaner.swift */; };
 		A10000000000000000000088 /* ActivitySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000089 /* ActivitySource.swift */; };
 		A1000000000000000000008A /* ApprovalSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000008B /* ApprovalSource.swift */; };
 		A1000000000000000000008C /* UsageSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000008D /* UsageSource.swift */; };
@@ -113,7 +114,33 @@
 		A10000000000000000000152 /* DotMatrixSineWaveStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */; };
 		A10000000000000000000154 /* DotMatrixSuccessStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */; };
 		A10000000000000000000156 /* DotMatrixFailureStatusGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */; };
+		A10000000000000000000160 /* OpenCodeHookBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000161 /* OpenCodeHookBridge.swift */; };
+		A10000000000000000000162 /* OpenCodeHookInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000163 /* OpenCodeHookInstaller.swift */; };
+		A10000000000000000000164 /* OpenCodeSQLiteReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000165 /* OpenCodeSQLiteReader.swift */; };
+		A10000000000000000000166 /* OpenCodeApprovalExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000167 /* OpenCodeApprovalExecutor.swift */; };
+		A10000000000000000000170 /* OpenCodeUsageSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000171 /* OpenCodeUsageSnapshot.swift */; };
+		A10000000000000000000172 /* OpenCodeUsageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000173 /* OpenCodeUsageLoader.swift */; };
+		A10000000000000000000174 /* OpenCodeUsageSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000175 /* OpenCodeUsageSource.swift */; };
+		A10000000000000000000176 /* OpenCodeUsageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000177 /* OpenCodeUsageCardView.swift */; };
+		A20000000000000000000002 /* SettingsPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* SettingsPanelView.swift */; };
+		A20000000000000000000004 /* IslandWindowViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* IslandWindowViews.swift */; };
+		A20000000000000000000006 /* SettingsWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* SettingsWindowCoordinator.swift */; };
+		A20000000000000000000008 /* ClaudeProviderConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ClaudeProviderConfigStore.swift */; };
+		A2000000000000000000000A /* ProviderConfigWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ProviderConfigWatcher.swift */; };
+		A40000000000000000000003 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* LoginItemController.swift */; };
+		A30000000000000000000001 /* ArchitectureLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000011 /* ArchitectureLogicTests.swift */; };
+		A30000000000000000000002 /* ClaudeProviderConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000012 /* ClaudeProviderConfigStoreTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A30000000000000000000061 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A10000000000000000000060 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A10000000000000000000040;
+			remoteInfo = HermitFlow;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000001 /* HermitFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermitFlowApp.swift; sourceTree = "<group>"; };
@@ -126,6 +153,20 @@
 		A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixSineWaveStatusGlyph.swift; sourceTree = "<group>"; };
 		A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixSuccessStatusGlyph.swift; sourceTree = "<group>"; };
 		A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMatrixFailureStatusGlyph.swift; sourceTree = "<group>"; };
+		A10000000000000000000161 /* OpenCodeHookBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeHookBridge.swift; sourceTree = "<group>"; };
+		A10000000000000000000163 /* OpenCodeHookInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeHookInstaller.swift; sourceTree = "<group>"; };
+		A10000000000000000000165 /* OpenCodeSQLiteReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeSQLiteReader.swift; sourceTree = "<group>"; };
+		A10000000000000000000167 /* OpenCodeApprovalExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeApprovalExecutor.swift; sourceTree = "<group>"; };
+		A10000000000000000000171 /* OpenCodeUsageSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeUsageSnapshot.swift; sourceTree = "<group>"; };
+		A10000000000000000000173 /* OpenCodeUsageLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeUsageLoader.swift; sourceTree = "<group>"; };
+		A10000000000000000000175 /* OpenCodeUsageSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeUsageSource.swift; sourceTree = "<group>"; };
+		A10000000000000000000177 /* OpenCodeUsageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeUsageCardView.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* SettingsPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanelView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* IslandWindowViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IslandWindowViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* SettingsWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowCoordinator.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* ClaudeProviderConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProviderConfigStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* ProviderConfigWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderConfigWatcher.swift; sourceTree = "<group>"; };
+		A40000000000000000000004 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
 		A10000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000007 /* HermitFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermitFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000008 /* claudecode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = claudecode.png; sourceTree = "<group>"; };
@@ -152,6 +193,7 @@
 		A10000000000000000000083 /* AppBootstrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBootstrapper.swift; sourceTree = "<group>"; };
 		A10000000000000000000085 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		A10000000000000000000087 /* FilePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePaths.swift; sourceTree = "<group>"; };
+		A40000000000000000000002 /* LogRetentionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogRetentionCleaner.swift; sourceTree = "<group>"; };
 		A10000000000000000000089 /* ActivitySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitySource.swift; sourceTree = "<group>"; };
 		A1000000000000000000008B /* ApprovalSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSource.swift; sourceTree = "<group>"; };
 		A1000000000000000000008D /* UsageSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSource.swift; sourceTree = "<group>"; };
@@ -224,10 +266,20 @@
 			A10000000000000000000147 /* QuestionTextInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionTextInputView.swift; sourceTree = "<group>"; };
 			A10000000000000000000148 /* QuestionPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionPanelView.swift; sourceTree = "<group>"; };
 			A10000000000000000000149 /* QuestionInlineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuestionInlineView.swift; sourceTree = "<group>"; };
+		A30000000000000000000011 /* ArchitectureLogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchitectureLogicTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000012 /* ClaudeProviderConfigStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProviderConfigStoreTests.swift; sourceTree = "<group>"; };
+		A30000000000000000000013 /* HermitFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermitFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A10000000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000030 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -241,6 +293,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000031 /* DynamicCLIIsland */,
+				A30000000000000000000020 /* HermitFlowTests */,
 				A10000000000000000000032 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -271,6 +324,7 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000007 /* HermitFlow.app */,
+				A30000000000000000000013 /* HermitFlowTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -305,6 +359,7 @@
 					A100000000000000000000EE /* Approval */,
 					A1000000000000000000012A /* Diagnostics */,
 					A10000000000000000000150 /* Question */,
+					A2000000000000000000000B /* Settings */,
 					A10000000000000000000151 /* DotMatrixSineWaveStatusGlyph.swift */,
 					A10000000000000000000153 /* DotMatrixSuccessStatusGlyph.swift */,
 					A10000000000000000000155 /* DotMatrixFailureStatusGlyph.swift */,
@@ -338,6 +393,7 @@
 				children = (
 					A1000000000000000000010B /* Claude */,
 					A1000000000000000000010C /* Codex */,
+					A10000000000000000000168 /* OpenCode */,
 					A10000000000000000000017 /* LocalCodexSource.swift */,
 					A10000000000000000000010 /* ProgressSources.swift */,
 					A100000000000000000000D6 /* Shared */,
@@ -352,9 +408,11 @@
 					A1000000000000000000012B /* Diagnostics */,
 					A1000000000000000000012F /* GitHubReleaseAssetDownloader.swift */,
 					A1000000000000000000012D /* GitHubReleaseUpdateChecker.swift */,
+					A20000000000000000000007 /* ClaudeProviderConfigStore.swift */,
 					A1000000000000000000010D /* Usage */,
 					A10000000000000000000026 /* AccessibilityPermissionMonitor.swift */,
 					A10000000000000000000024 /* FocusLauncher.swift */,
+					A40000000000000000000004 /* LoginItemController.swift */,
 					A10000000000000000000046 /* NotificationSoundPlayer.swift */,
 					A1000000000000000000000F /* FocusRouter.swift */,
 			);
@@ -384,10 +442,11 @@
 			};
 		A100000000000000000000A4 /* Utilities */ = {
 			isa = PBXGroup;
-			children = (
-				A10000000000000000000085 /* Logger.swift */,
-				A10000000000000000000087 /* FilePaths.swift */,
-			);
+				children = (
+					A10000000000000000000085 /* Logger.swift */,
+					A10000000000000000000087 /* FilePaths.swift */,
+					A40000000000000000000002 /* LogRetentionCleaner.swift */,
+				);
 			path = Utilities;
 			sourceTree = "<group>";
 		};
@@ -417,6 +476,8 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000093 /* IslandWindowCoordinator.swift */,
+				A20000000000000000000003 /* IslandWindowViews.swift */,
+				A20000000000000000000005 /* SettingsWindowCoordinator.swift */,
 				A10000000000000000000095 /* WindowSizingCoordinator.swift */,
 				A10000000000000000000097 /* ScreenPlacementCoordinator.swift */,
 			);
@@ -435,6 +496,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000009B /* PollingCoordinator.swift */,
+				A20000000000000000000009 /* ProviderConfigWatcher.swift */,
 				A1000000000000000000009D /* AccessibilityCoordinator.swift */,
 			);
 			path = Monitoring;
@@ -544,6 +606,7 @@
 					A10000000000000000000105 /* UsageSummaryView.swift */,
 					A10000000000000000000107 /* ClaudeUsageCardView.swift */,
 					A10000000000000000000109 /* CodexUsageCardView.swift */,
+					A10000000000000000000177 /* OpenCodeUsageCardView.swift */,
 				);
 				path = Usage;
 				sourceTree = "<group>";
@@ -574,11 +637,24 @@
 				path = Codex;
 				sourceTree = "<group>";
 			};
+			A10000000000000000000168 /* OpenCode */ = {
+				isa = PBXGroup;
+				children = (
+					A10000000000000000000161 /* OpenCodeHookBridge.swift */,
+					A10000000000000000000163 /* OpenCodeHookInstaller.swift */,
+					A10000000000000000000165 /* OpenCodeSQLiteReader.swift */,
+					A10000000000000000000167 /* OpenCodeApprovalExecutor.swift */,
+					A10000000000000000000175 /* OpenCodeUsageSource.swift */,
+				);
+				path = OpenCode;
+				sourceTree = "<group>";
+			};
 			A1000000000000000000010D /* Usage */ = {
 				isa = PBXGroup;
 				children = (
 					A100000000000000000000F9 /* ClaudeUsageLoader.swift */,
 					A100000000000000000000FB /* CodexUsageLoader.swift */,
+					A10000000000000000000173 /* OpenCodeUsageLoader.swift */,
 					A100000000000000000000FD /* UsageSummaryFormatter.swift */,
 				);
 				path = Usage;
@@ -589,9 +665,18 @@
 				children = (
 					A100000000000000000000F3 /* ClaudeUsageSnapshot.swift */,
 					A100000000000000000000F5 /* CodexUsageSnapshot.swift */,
+					A10000000000000000000171 /* OpenCodeUsageSnapshot.swift */,
 					A100000000000000000000F7 /* UsageProviderState.swift */,
 				);
 				path = Usage;
+				sourceTree = "<group>";
+			};
+			A2000000000000000000000B /* Settings */ = {
+				isa = PBXGroup;
+				children = (
+					A20000000000000000000001 /* SettingsPanelView.swift */,
+				);
+				path = Settings;
 				sourceTree = "<group>";
 			};
 			A1000000000000000000012A /* Diagnostics */ = {
@@ -631,6 +716,15 @@
 				path = Diagnostics;
 				sourceTree = "<group>";
 			};
+		A30000000000000000000020 /* HermitFlowTests */ = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000011 /* ArchitectureLogicTests.swift */,
+				A30000000000000000000012 /* ClaudeProviderConfigStoreTests.swift */,
+			);
+			path = HermitFlowTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -651,6 +745,24 @@
 			productReference = A10000000000000000000007 /* HermitFlow.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A30000000000000000000040 /* HermitFlowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A30000000000000000000050 /* Build configuration list for PBXNativeTarget "HermitFlowTests" */;
+			buildPhases = (
+				A30000000000000000000031 /* Sources */,
+				A30000000000000000000030 /* Frameworks */,
+				A30000000000000000000032 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A30000000000000000000060 /* PBXTargetDependency */,
+			);
+			name = HermitFlowTests;
+			productName = HermitFlowTests;
+			productReference = A30000000000000000000013 /* HermitFlowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -663,6 +775,10 @@
 				TargetAttributes = {
 					A10000000000000000000040 = {
 						CreatedOnToolsVersion = 26.4;
+					};
+					A30000000000000000000040 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = A10000000000000000000040;
 					};
 				};
 			};
@@ -680,6 +796,7 @@
 			projectRoot = "";
 			targets = (
 				A10000000000000000000040 /* HermitFlow */,
+				A30000000000000000000040 /* HermitFlowTests */,
 			);
 		};
 /* End PBXProject section */
@@ -700,6 +817,13 @@
 				A10000000000000000000019 /* zenmux.png in Resources */,
 				A10000000000000000000018 /* claudecode-bar.png in Resources */,
 				A10000000000000000000016 /* claudecode.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -733,6 +857,7 @@
 				A10000000000000000000082 /* AppBootstrapper.swift in Sources */,
 				A10000000000000000000084 /* Logger.swift in Sources */,
 				A10000000000000000000086 /* FilePaths.swift in Sources */,
+				A40000000000000000000001 /* LogRetentionCleaner.swift in Sources */,
 				A10000000000000000000088 /* ActivitySource.swift in Sources */,
 				A1000000000000000000008A /* ApprovalSource.swift in Sources */,
 				A1000000000000000000008C /* UsageSource.swift in Sources */,
@@ -790,6 +915,14 @@
 				A10000000000000000000122 /* CodexSessionReader.swift in Sources */,
 				A10000000000000000000124 /* CodexLogReader.swift in Sources */,
 				A10000000000000000000126 /* CodexHookSource.swift in Sources */,
+				A10000000000000000000160 /* OpenCodeHookBridge.swift in Sources */,
+				A10000000000000000000162 /* OpenCodeHookInstaller.swift in Sources */,
+				A10000000000000000000164 /* OpenCodeSQLiteReader.swift in Sources */,
+				A10000000000000000000166 /* OpenCodeApprovalExecutor.swift in Sources */,
+				A10000000000000000000170 /* OpenCodeUsageSnapshot.swift in Sources */,
+				A10000000000000000000172 /* OpenCodeUsageLoader.swift in Sources */,
+				A10000000000000000000174 /* OpenCodeUsageSource.swift in Sources */,
+				A10000000000000000000176 /* OpenCodeUsageCardView.swift in Sources */,
 				A10000000000000000000128 /* DiagnosticsCardView.swift in Sources */,
 				A10000000000000000000130 /* GitHubReleaseAssetDownloader.swift in Sources */,
 				A1000000000000000000012E /* GitHubReleaseUpdateChecker.swift in Sources */,
@@ -805,10 +938,33 @@
 				A1000000000000000000013C /* QuestionTextInputView.swift in Sources */,
 				A1000000000000000000013D /* QuestionPanelView.swift in Sources */,
 				A1000000000000000000014A /* QuestionInlineView.swift in Sources */,
-				);
+				A20000000000000000000002 /* SettingsPanelView.swift in Sources */,
+				A20000000000000000000004 /* IslandWindowViews.swift in Sources */,
+				A20000000000000000000006 /* SettingsWindowCoordinator.swift in Sources */,
+				A20000000000000000000008 /* ClaudeProviderConfigStore.swift in Sources */,
+				A2000000000000000000000A /* ProviderConfigWatcher.swift in Sources */,
+				A40000000000000000000003 /* LoginItemController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A30000000000000000000031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A30000000000000000000001 /* ArchitectureLogicTests.swift in Sources */,
+				A30000000000000000000002 /* ClaudeProviderConfigStoreTests.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A30000000000000000000060 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A10000000000000000000040 /* HermitFlow */;
+			targetProxy = A30000000000000000000061 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A10000000000000000000070 /* Debug */ = {
@@ -821,11 +977,12 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DynamicCLIIsland/Info.plist;
@@ -834,11 +991,12 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuyue.HermitFlow;
 				PRODUCT_NAME = HermitFlow;
 				SDKROOT = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
@@ -853,7 +1011,7 @@
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_APP_SANDBOX = NO;
@@ -866,7 +1024,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0.6;
+				MARKETING_VERSION = 1.0.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fuyue.HermitFlow;
 				PRODUCT_NAME = HermitFlow;
 				SDKROOT = macosx;
@@ -893,6 +1051,52 @@
 			};
 			name = Release;
 		};
+		A30000000000000000000051 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fuyue.HermitFlowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HermitFlow.app/Contents/MacOS/HermitFlow";
+			};
+			name = Debug;
+		};
+		A30000000000000000000052 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.fuyue.HermitFlowTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HermitFlow.app/Contents/MacOS/HermitFlow";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -910,6 +1114,15 @@
 			buildConfigurations = (
 				A10000000000000000000072 /* Debug */,
 				A10000000000000000000073 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A30000000000000000000050 /* Build configuration list for PBXNativeTarget "HermitFlowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A30000000000000000000051 /* Debug */,
+				A30000000000000000000052 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
