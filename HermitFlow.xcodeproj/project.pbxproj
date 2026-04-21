@@ -36,6 +36,7 @@
 		A10000000000000000000082 /* AppBootstrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000083 /* AppBootstrapper.swift */; };
 		A10000000000000000000084 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000085 /* Logger.swift */; };
 		A10000000000000000000086 /* FilePaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000087 /* FilePaths.swift */; };
+		A40000000000000000000001 /* LogRetentionCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000002 /* LogRetentionCleaner.swift */; };
 		A10000000000000000000088 /* ActivitySource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000089 /* ActivitySource.swift */; };
 		A1000000000000000000008A /* ApprovalSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000008B /* ApprovalSource.swift */; };
 		A1000000000000000000008C /* UsageSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000008D /* UsageSource.swift */; };
@@ -126,6 +127,7 @@
 		A20000000000000000000006 /* SettingsWindowCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* SettingsWindowCoordinator.swift */; };
 		A20000000000000000000008 /* ClaudeProviderConfigStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* ClaudeProviderConfigStore.swift */; };
 		A2000000000000000000000A /* ProviderConfigWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* ProviderConfigWatcher.swift */; };
+		A40000000000000000000003 /* LoginItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A40000000000000000000004 /* LoginItemController.swift */; };
 		A30000000000000000000001 /* ArchitectureLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000011 /* ArchitectureLogicTests.swift */; };
 		A30000000000000000000002 /* ClaudeProviderConfigStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A30000000000000000000012 /* ClaudeProviderConfigStoreTests.swift */; };
 /* End PBXBuildFile section */
@@ -164,6 +166,7 @@
 		A20000000000000000000005 /* SettingsWindowCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowCoordinator.swift; sourceTree = "<group>"; };
 		A20000000000000000000007 /* ClaudeProviderConfigStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeProviderConfigStore.swift; sourceTree = "<group>"; };
 		A20000000000000000000009 /* ProviderConfigWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderConfigWatcher.swift; sourceTree = "<group>"; };
+		A40000000000000000000004 /* LoginItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemController.swift; sourceTree = "<group>"; };
 		A10000000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A10000000000000000000007 /* HermitFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HermitFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000008 /* claudecode.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = claudecode.png; sourceTree = "<group>"; };
@@ -190,6 +193,7 @@
 		A10000000000000000000083 /* AppBootstrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBootstrapper.swift; sourceTree = "<group>"; };
 		A10000000000000000000085 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 		A10000000000000000000087 /* FilePaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePaths.swift; sourceTree = "<group>"; };
+		A40000000000000000000002 /* LogRetentionCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogRetentionCleaner.swift; sourceTree = "<group>"; };
 		A10000000000000000000089 /* ActivitySource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivitySource.swift; sourceTree = "<group>"; };
 		A1000000000000000000008B /* ApprovalSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSource.swift; sourceTree = "<group>"; };
 		A1000000000000000000008D /* UsageSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSource.swift; sourceTree = "<group>"; };
@@ -408,6 +412,7 @@
 					A1000000000000000000010D /* Usage */,
 					A10000000000000000000026 /* AccessibilityPermissionMonitor.swift */,
 					A10000000000000000000024 /* FocusLauncher.swift */,
+					A40000000000000000000004 /* LoginItemController.swift */,
 					A10000000000000000000046 /* NotificationSoundPlayer.swift */,
 					A1000000000000000000000F /* FocusRouter.swift */,
 			);
@@ -437,10 +442,11 @@
 			};
 		A100000000000000000000A4 /* Utilities */ = {
 			isa = PBXGroup;
-			children = (
-				A10000000000000000000085 /* Logger.swift */,
-				A10000000000000000000087 /* FilePaths.swift */,
-			);
+				children = (
+					A10000000000000000000085 /* Logger.swift */,
+					A10000000000000000000087 /* FilePaths.swift */,
+					A40000000000000000000002 /* LogRetentionCleaner.swift */,
+				);
 			path = Utilities;
 			sourceTree = "<group>";
 		};
@@ -851,6 +857,7 @@
 				A10000000000000000000082 /* AppBootstrapper.swift in Sources */,
 				A10000000000000000000084 /* Logger.swift in Sources */,
 				A10000000000000000000086 /* FilePaths.swift in Sources */,
+				A40000000000000000000001 /* LogRetentionCleaner.swift in Sources */,
 				A10000000000000000000088 /* ActivitySource.swift in Sources */,
 				A1000000000000000000008A /* ApprovalSource.swift in Sources */,
 				A1000000000000000000008C /* UsageSource.swift in Sources */,
@@ -936,7 +943,8 @@
 				A20000000000000000000006 /* SettingsWindowCoordinator.swift in Sources */,
 				A20000000000000000000008 /* ClaudeProviderConfigStore.swift in Sources */,
 				A2000000000000000000000A /* ProviderConfigWatcher.swift in Sources */,
-				);
+				A40000000000000000000003 /* LoginItemController.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A30000000000000000000031 /* Sources */ = {

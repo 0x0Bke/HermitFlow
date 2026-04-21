@@ -14,10 +14,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settingsWindowCoordinator = SettingsWindowCoordinator()
     private let providerConfigStore = ClaudeProviderConfigStore()
     private let providerConfigWatcher = ProviderConfigWatcher()
+    private let loginItemController = LoginItemController()
     private var providerConfigRefreshToken = 0
     private let screenPlacementModeDefaultsKey = "HermitFlow.screenPlacementMode"
     private let fixedScreenIDDefaultsKey = "HermitFlow.fixedScreenID"
-    private let debugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
+    private let debugLogURL = FilePaths.approvalDebugLog
     private let updateChecker = GitHubReleaseUpdateChecker()
     private let updateDownloader = GitHubReleaseAssetDownloader()
     private var isCheckingForUpdates = false
@@ -167,6 +168,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             onUsageDisplayTypeSelected: { [weak self] option in
                 self?.store.setUsageDisplayType(option)
+            },
+            launchAtLoginEnabled: { [weak self] in
+                self?.loginItemController.isEnabled ?? false
+            },
+            onLaunchAtLoginChange: { [weak self] isEnabled in
+                self?.setLaunchAtLoginEnabled(isEnabled)
             },
             currentCustomLogoPath: { [weak self] in
                 self?.store.customLogoPath
@@ -680,6 +687,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             refreshProviderConfigState()
         } catch {
             debugLog("Failed to write Claude provider usage config: \(error.localizedDescription)")
+        }
+    }
+
+    private func setLaunchAtLoginEnabled(_ isEnabled: Bool) {
+        do {
+            try loginItemController.setEnabled(isEnabled)
+        } catch {
+            debugLog("Failed to update launch at login: \(error.localizedDescription)")
         }
     }
 

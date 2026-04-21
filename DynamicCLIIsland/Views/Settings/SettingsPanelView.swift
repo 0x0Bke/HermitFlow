@@ -171,6 +171,8 @@ struct SettingsPanelView: View {
     let onAskUserQuestionHandlingModeSelected: (AskUserQuestionHandlingMode) -> Void
     let usageDisplayType: () -> UsageDisplayType
     let onUsageDisplayTypeSelected: (UsageDisplayType) -> Void
+    let launchAtLoginEnabled: () -> Bool
+    let onLaunchAtLoginChange: (Bool) -> Void
     let currentCustomLogoPath: () -> String?
     let onChooseCustomLogo: () -> Void
     let onClearCustomLogo: () -> Void
@@ -380,8 +382,7 @@ struct SettingsPanelView: View {
             sectionDivider
 
             quickSettingsRow(
-                leading: { Color.clear.frame(maxWidth: .infinity, alignment: .leading) },
-                trailing: {
+                leading: {
                     quickSettingCell(title: "usage-type", systemImage: "chart.bar") {
                         Menu {
                             ForEach(UsageDisplayType.allCases, id: \.rawValue) { option in
@@ -393,6 +394,15 @@ struct SettingsPanelView: View {
                             pickerCapsule(title: usageDisplayType().menuTitle, width: 116)
                         }
                         .menuStyle(.borderlessButton)
+                    }
+                },
+                trailing: {
+                    quickSettingCell(title: "Launch", systemImage: "power") {
+                        Toggle("", isOn: launchAtLoginBinding)
+                            .toggleStyle(.switch)
+                            .labelsHidden()
+                            .tint(settingsAccent)
+                            .scaleEffect(0.68)
                     }
                 }
             )
@@ -675,6 +685,15 @@ struct SettingsPanelView: View {
         )
     }
 
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { launchAtLoginEnabled() },
+            set: { isEnabled in
+                onLaunchAtLoginChange(isEnabled)
+            }
+        )
+    }
+
     private var availableLogos: [IslandBrandLogo] {
         [.hermit, .clawd, .zenmux, .claudeCodeColor, .codexColor, .codexMono, .openAI]
     }
@@ -721,4 +740,3 @@ struct SettingsPanelView: View {
         }
     }
 }
-

@@ -415,6 +415,11 @@ final class ProgressStore: ObservableObject {
         if promptChanged {
             questionPrompt = latestPrompt
         }
+        if let latestPrompt,
+           latestPrompt.id != previousPromptID,
+           !appStore.isSoundMuted {
+            appStore.runtimeStore.notificationSoundPlayer.playApprovalSound()
+        }
         if supportsSubmissionChanged {
             activeQuestionSupportsSubmission = supportsSubmission
         }

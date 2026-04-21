@@ -21,6 +21,7 @@ final class AppBootstrapper {
     }
 
     func bootstrap() {
+        LogRetentionCleaner().cleanStartupArtifacts()
         environment.progressStore.handleLaunch()
     }
 }

@@ -33,6 +33,8 @@ enum FilePaths {
         .appendingPathComponent("Completion", isDirectory: false)
     static let claudeUsageCache = URL(fileURLWithPath: "/tmp/hermitflow-rl.json")
     static let claudeStatusLineDebug = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
+    static let approvalDebugLog = URL(fileURLWithPath: "/tmp/hermitflow-approval-debug.log")
+    static let claudeDebugLog = URL(fileURLWithPath: "/tmp/hermitflow-claude-debug.log")
     static let codexHome = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".codex", isDirectory: true)
     static let openCodeConfigDirectory = FileManager.default.homeDirectoryForCurrentUser

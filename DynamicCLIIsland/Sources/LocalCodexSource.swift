@@ -305,6 +305,13 @@ struct LocalCodexSource: @unchecked Sendable {
             return .success
         }
 
+        if latestCompletionAt > 0,
+           now - latestCompletionAt < successSettleDelay,
+           latestCompletionAt >= latestFailureAt,
+           latestCompletionAt >= latestExplicitRunningAt {
+            return .running
+        }
+
         if latestExplicitRunningAt > 0,
            now - latestExplicitRunningAt <= runningSignalMaxAge,
            latestExplicitRunningAt >= latestTerminalAt {
@@ -1693,7 +1700,7 @@ private final class ClaudeHookBridge: @unchecked Sendable {
     private let claudeStatusLineDebugURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-statusline-debug.json")
     private let questionStateRootURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions")
     private let latestQuestionStateURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".hermitflow/claude-questions/latest-question.json")
-    private let claudeDebugLogURL = URL(fileURLWithPath: "/tmp/hermitflow-claude-debug.log")
+    private let claudeDebugLogURL = FilePaths.claudeDebugLog
     private let recentHistoryScanBytes = 512 * 1024
     private let recentClaudeProjectFileLimit = 20
     private let interruptionOverrideWindow: TimeInterval = 10

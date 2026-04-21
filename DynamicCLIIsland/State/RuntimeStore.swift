@@ -904,6 +904,33 @@ final class RuntimeStore: ObservableObject {
             )
         }
 
+        let explicitIdleEvents = events.compactMap { event -> SessionEvent? in
+            switch event {
+            case let .sessionStarted(payload), let .sessionUpdated(payload):
+                return payload.activityState == .idle ? payload : nil
+            case .sessionCompleted, .sessionsReconciled, .approvalRequested, .approvalResolved,
+                 .diagnosticUpdated, .focusTargetUpdated, .runtimeStatusMessageUpdated,
+                 .runtimeErrorUpdated, .runtimeLastUpdated, .usageSnapshotsUpdated,
+                 .usageProviderStateUpdated:
+                return nil
+            }
+        }
+
+        if explicitIdleEvents.contains(where: { payload in
+            guard let previousSession = previousSessions[payload.id],
+                  previousSession.activityState == .running,
+                  payload.updatedAt >= previousSession.updatedAt else {
+                return false
+            }
+
+            return true
+        }) {
+            return AggregateStatusOverride(
+                state: .success,
+                expiresAt: Date().addingTimeInterval(aggregateSuccessFlashDuration)
+            )
+        }
+
         let explicitlyCompletedIDs = Set(explicitCompletedEvents.map(\.id))
         for event in events {
             guard case let .sessionsReconciled(currentSessionIDs, _) = event else {
