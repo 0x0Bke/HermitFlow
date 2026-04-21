@@ -137,7 +137,7 @@ struct GitHubReleaseUpdateChecker {
         return trimmed
     }
 
-    private static func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
+    static func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
         let lhsComponents = parseVersionComponents(lhs)
         let rhsComponents = parseVersionComponents(rhs)
         let maxCount = max(lhsComponents.count, rhsComponents.count)
