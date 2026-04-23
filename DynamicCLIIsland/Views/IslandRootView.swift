@@ -241,6 +241,7 @@ struct IslandRootView: View {
             .animation(nil, value: store.codexStatus)
             .animation(nil, value: store.activeRunningDetail)
             .animation(nil, value: store.runningGlyphAnimationSuppressed)
+            .animation(nil, value: store.dotMatrixAnimationEnabled)
     }
 
     @ViewBuilder
@@ -299,15 +300,27 @@ struct IslandRootView: View {
         runningDetail: IslandRunningDetail?
     ) -> some View {
         if shouldUseSpinnerStatusGlyph {
-            BlueBreathingStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+            if store.dotMatrixAnimationEnabled {
+                DotMatrixSpinnerStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+            } else {
+                BlueBreathingStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+            }
         } else {
             switch state {
             case .idle:
                 IdleStatusGlyph()
             case .running:
-                RunningStatusGlyph(animationAllowed: !store.runningGlyphAnimationSuppressed)
+                if store.dotMatrixAnimationEnabled {
+                    DotMatrixWaveStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+                } else {
+                    RunningStatusGlyph(animationAllowed: !store.runningGlyphAnimationSuppressed)
+                }
             case .success:
-                SuccessStatusGlyph()
+                if store.dotMatrixAnimationEnabled {
+                    DotMatrixSuccessStatusGlyph(isAnimating: !store.runningGlyphAnimationSuppressed)
+                } else {
+                    SuccessStatusGlyph()
+                }
             case .failure:
                 TerminalStatusGlyph(state: .failure)
             }
@@ -316,14 +329,14 @@ struct IslandRootView: View {
 
     private var statusGlyphIdentity: String {
         if let approvalRequest = store.approvalRequest {
-            return "spinner-approval-\(approvalRequest.id)-\(store.runningGlyphAnimationSuppressed)"
+            return "spinner-approval-\(approvalRequest.id)-\(store.runningGlyphAnimationSuppressed)-\(store.dotMatrixAnimationEnabled)"
         }
 
         if let prompt = store.activeQuestionPrompt {
-            return "spinner-question-\(prompt.id)-\(store.runningGlyphAnimationSuppressed)"
+            return "spinner-question-\(prompt.id)-\(store.runningGlyphAnimationSuppressed)-\(store.dotMatrixAnimationEnabled)"
         }
 
-        return "\(store.codexStatus.rawValue)-\(store.activeRunningDetail?.rawValue ?? "none")-\(store.runningGlyphAnimationSuppressed)"
+        return "\(store.codexStatus.rawValue)-\(store.activeRunningDetail?.rawValue ?? "none")-\(store.runningGlyphAnimationSuppressed)-\(store.dotMatrixAnimationEnabled)"
     }
 
     private var shouldUseSpinnerStatusGlyph: Bool {

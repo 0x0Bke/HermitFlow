@@ -3,10 +3,36 @@ import XCTest
 @testable import HermitFlow
 
 final class ArchitectureLogicTests: XCTestCase {
+    private let dotMatrixAnimationDefaultsKey = "HermitFlow.dotMatrixAnimationEnabled"
+
     func testVersionCompareHandlesTagsMissingPatchAndPreReleaseSuffixes() {
         XCTAssertEqual(GitHubReleaseUpdateChecker.compareVersions("v1.2.10", "1.2.9"), .orderedDescending)
         XCTAssertEqual(GitHubReleaseUpdateChecker.compareVersions("1.2", "1.2.0"), .orderedSame)
         XCTAssertEqual(GitHubReleaseUpdateChecker.compareVersions("1.2.0-beta", "1.2.1"), .orderedAscending)
+    }
+
+    @MainActor
+    func testDotMatrixAnimationPreferenceDefaultsPersistsAndRestores() {
+        let defaults = UserDefaults.standard
+        let originalValue = defaults.object(forKey: dotMatrixAnimationDefaultsKey)
+        defaults.removeObject(forKey: dotMatrixAnimationDefaultsKey)
+        defer {
+            if let originalValue {
+                defaults.set(originalValue, forKey: dotMatrixAnimationDefaultsKey)
+            } else {
+                defaults.removeObject(forKey: dotMatrixAnimationDefaultsKey)
+            }
+        }
+
+        let defaultStore = PresentationStore()
+        XCTAssertFalse(defaultStore.dotMatrixAnimationEnabled)
+
+        defaultStore.setDotMatrixAnimationEnabled(true)
+        XCTAssertTrue(defaultStore.dotMatrixAnimationEnabled)
+        XCTAssertTrue(defaults.bool(forKey: dotMatrixAnimationDefaultsKey))
+
+        let restoredStore = PresentationStore()
+        XCTAssertTrue(restoredStore.dotMatrixAnimationEnabled)
     }
 
     @MainActor

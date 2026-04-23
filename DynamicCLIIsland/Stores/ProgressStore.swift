@@ -178,6 +178,7 @@ final class ProgressStore: ObservableObject {
     var approvalPreviewEnabled: Bool { appStore.approvalPreviewEnabled }
     var approvalDefaultFocus: ApprovalDefaultFocusOption { appStore.approvalDefaultFocus }
     var usageDisplayType: UsageDisplayType { appStore.usageDisplayType }
+    var dotMatrixAnimationEnabled: Bool { appStore.dotMatrixAnimationEnabled }
     var inlineApprovalCommandExpanded: Bool { appStore.inlineApprovalCommandExpanded }
     var collapsedInlineApprovalID: String? { appStore.collapsedInlineApprovalID }
     var accessibilityPermissionGranted: Bool { appStore.accessibilityPermissionGranted }
@@ -323,6 +324,10 @@ final class ProgressStore: ObservableObject {
 
     func setUsageDisplayType(_ type: UsageDisplayType) {
         appStore.setUsageDisplayType(type)
+    }
+
+    func setDotMatrixAnimationEnabled(_ enabled: Bool) {
+        appStore.setDotMatrixAnimationEnabled(enabled)
     }
 
     func setAskUserQuestionHandlingMode(_ mode: AskUserQuestionHandlingMode) {

@@ -169,6 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             onUsageDisplayTypeSelected: { [weak self] option in
                 self?.store.setUsageDisplayType(option)
             },
+            dotMatrixAnimationEnabled: { [weak self] in
+                self?.store.dotMatrixAnimationEnabled ?? false
+            },
+            onDotMatrixAnimationEnabledChange: { [weak self] isEnabled in
+                self?.store.setDotMatrixAnimationEnabled(isEnabled)
+            },
             launchAtLoginEnabled: { [weak self] in
                 self?.loginItemController.isEnabled ?? false
             },
